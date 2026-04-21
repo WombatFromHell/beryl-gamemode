@@ -136,11 +136,13 @@ def _signal_guard(
     def _handler(signum: int, _frame: object) -> None:
         log.info("Received signal %s, terminating child and cleaning up", signum)
         pending_signal[0] = signum
-        if child_proc[0] is not None:
-            try:
-                child_proc[0].kill()
-            except OSError:
-                pass
+        proc = child_proc[0]
+        if proc is None:
+            return
+        try:
+            proc.kill()
+        except OSError:
+            pass
 
     try:
         signal.signal(signal.SIGTERM, _handler)
@@ -223,15 +225,18 @@ def action_wrapper(
 
         exec_cmd = chain.apply(command)
         child_proc: list[subprocess.Popen | None] = [None]
-        with _signal_guard(log, child_proc) as pending_signal:
-            try:
-                child_proc[0] = subprocess.Popen(exec_cmd, start_new_session=True)
+        try:
+            child_proc[0] = subprocess.Popen(exec_cmd, start_new_session=True)
+        except OSError as exc:
+            log.error("Failed to execute command: %s", exc)
+            cleanup()
+            return 1
+
+        try:
+            with _signal_guard(log, child_proc) as pending_signal:
                 retcode = child_proc[0].wait()
-            except OSError as exc:
-                log.error("Failed to execute command: %s", exc)
-                return 1
-            finally:
-                cleanup()
+        finally:
+            cleanup()
         if pending_signal:
             sys.exit(128 + pending_signal)
         return retcode

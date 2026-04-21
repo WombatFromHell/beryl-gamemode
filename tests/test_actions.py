@@ -79,6 +79,7 @@ class TestActionWrapper:
         child_script.write_text(f"""
 import sys, os, time, json, signal
 from unittest.mock import patch
+from contextlib import contextmanager
 sys.path.insert(0, {gamemode_dir!r})
 import gamemode
 import logging
@@ -114,10 +115,20 @@ feat = RecordFeature()
 features = [("fake", feat)]
 runner = gamemode.Runner(logger)
 
-with open(ready_file, "w") as f:
-    f.write("ready")
+# Capture the original guard
+original_signal_guard = gamemode.actions._signal_guard
+
+@contextmanager
+def delayed_ready_guard(log, child_proc):
+    # Write the ready file ONLY after the signal handlers are safely installed
+    with open(ready_file, "w") as f:
+        f.write("ready")
+    with original_signal_guard(log, child_proc) as pending:
+        yield pending
+
 with patch.object(gamemode.actions, "collect_features", return_value=features):
-    gamemode.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
+    with patch.object(gamemode.actions, "_signal_guard", delayed_ready_guard):
+        gamemode.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
 """)
         child = subprocess.Popen(
             ["python3", str(child_script)],
