@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*" # Triggers on tags like v1.0.0
+
+permissions:
+  contents: write # Required to create releases and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Ensures full git history for Nix flake inputs
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          # Enable flakes and nix-command for modern Nix usage
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build Release Artifact
+        run: |
+          nix develop -c make ci
+
+      # only expose CI artifacts on workflow_dispatch
+      - name: Upload Workflow Artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-artifacts
+          path: dist/**/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.event_name != 'workflow_dispatch'
+        uses: softprops/action-gh-release@v3
+        with:
+          # Uploads all files found in the dist/ directory
+          files: |
+            dist/**/*
+          draft: false
+          prerelease: false
+          # Optional: Generate release notes from git tags
+          generate_release_notes: true
