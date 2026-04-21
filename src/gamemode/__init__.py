@@ -1,5 +1,6 @@
 """Gamemode — Performance toggle for gaming sessions."""
 
+import gamemode.actions  # noqa: F401
 from gamemode.__version__ import __version__
 from gamemode.actions import (
     _watch_parent,

@@ -29,7 +29,7 @@ class TestVRR:
         resolve_map, run_map, pipe_map = _vrr_maps(
             vrr_supported=True, vrr_enabled=False
         )
-        run_map[("niri", "msg", "output", "DP-1", "vrr", "on")] = _cp()
+        run_map[("niri", "msg", "output", "DP-1", "vrr", "on")] = _cp()  # pyright: ignore[reportArgumentType]
         vrr, fake = feature_builder(
             gamemode.VRR,
             enable_vrr=True,
@@ -56,7 +56,7 @@ class TestVRR:
 
     def test_disable_success(self, feature_builder, niri_session):
         resolve_map, run_map, pipe_map = _vrr_maps(vrr_supported=True, vrr_enabled=True)
-        run_map[("niri", "msg", "output", "DP-1", "vrr", "off")] = _cp()
+        run_map[("niri", "msg", "output", "DP-1", "vrr", "off")] = _cp()  # pyright: ignore[reportArgumentType]
         vrr, _ = feature_builder(
             gamemode.VRR,
             enable_vrr=True,

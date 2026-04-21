@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 
 import gamemode
+import gamemode.actions
 
 
 class FakeFeature(gamemode.Feature):
@@ -219,7 +220,11 @@ class TestWatchParent:
 
     def test_watch_parent_no_libc(self, tmp_path, logger):
         """When find_library returns None, _watch_parent should not raise."""
-        with patch.object(ctypes.util, "find_library", return_value=None):
+        with patch.object(
+            ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
+            "find_library",
+            return_value=None,
+        ):
             gamemode._watch_parent(logger)  # should not raise
 
     def test_watch_parent_prctl_fails(self, tmp_path, logger):
@@ -235,7 +240,11 @@ class TestWatchParent:
             def strerror(err):
                 return "error"
 
-        with patch.object(ctypes.util, "find_library", return_value="/lib/libc.so"):
+        with patch.object(
+            ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
+            "find_library",
+            return_value="/lib/libc.so",
+        ):
             with patch.object(ctypes, "CDLL", return_value=FakeLibc):
                 gamemode._watch_parent(logger)  # should not raise
 
@@ -248,7 +257,11 @@ class TestWatchParent:
             def prctl(*args):
                 return 0
 
-        with patch.object(ctypes.util, "find_library", return_value="/lib/libc.so"):
+        with patch.object(
+            ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
+            "find_library",
+            return_value="/lib/libc.so",
+        ):
             with patch.object(ctypes, "CDLL", return_value=FakeLibc):
                 gamemode._watch_parent(logger)  # should not raise
 

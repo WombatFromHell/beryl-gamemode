@@ -7,43 +7,89 @@ Gamemode is a gaming performance toggle tool for Linux desktops, targeting the *
 1. **Toggle mode** (`on`/`off`/`status`): Immediately enables or disables a set of system features
 2. **Wrapper mode** (`-- <command>` or bare command): Spawns a child process with feature wrappers pre-pended, with auto-cleanup via signal guards and parent-death detection
 
-## Dependency Graph
+## Module Dependency Graph
 
-```
-entry.py                          (application entry point)
-  └── cli.py                     (CLI parser & main dispatcher)
-       ├── __version__           (version resolution)
-       ├── actions              (on/off/status/wrapper implementations)
-       │    ├── compositor      (compositor detection: niri vs KDE)
-       │    │    └── config     (configuration dataclass)
-       │    ├── config
-       │    ├── feature         (Feature protocol & base class)
-       │    │    ├── config
-       │    │    └── runner     (subprocess abstraction)
-       │    ├── features        (all feature implementations + wrapper factories)
-       │    │    ├── compositor
-       │    │    ├── config
-       │    │    ├── feature
-       │    │    └── runner
-       │    ├── logging_setup   (logger configuration)
-       │    │    └── config
-       │    ├── orchestration   (feature collection & enable/disable)
-       │    │    ├── config
-       │    │    ├── feature
-       │    │    ├── features
-       │    │    └── runner
-       │    ├── runner
-       │    └── state           (JSON state + file locking)
-       │         └── config
-       ├── config
-       ├── dependencies         (command availability validation)
-       │    ├── config
-       │    └── runner
-       ├── logging_setup
-       └── runner
+```mermaid
+graph LR
+    subgraph entry["Entry Point"]
+        entry_py[entry.py]
+        version[__version__.py]
+    end
 
-gamemode/__init__.py             (package root — re-exports public API)
-gamemode/__version__.py          (version string with runtime fallback)
+    subgraph core["Core (leaf modules)"]
+        config[config.py]
+        runner[runner.py]
+    end
+
+    subgraph detection["Detection"]
+        compositor[compositor.py]
+        logging_setup[logging_setup.py]
+    end
+
+    subgraph protocol["Protocol"]
+        feature[feature.py]
+        dependencies[dependencies.py]
+    end
+
+    subgraph implementation["Implementation"]
+        features[features.py]
+        state[state.py]
+        orchestration[orchestration.py]
+    end
+
+    subgraph control["Control"]
+        actions[actions.py]
+        cli[cli.py]
+    end
+
+    subgraph api["API Surface"]
+        init[__init__.py]
+    end
+
+    entry_py --> cli
+    cli --> version
+    cli --> actions
+    cli --> config
+    cli --> dependencies
+    cli --> logging_setup
+    cli --> runner
+
+    actions --> compositor
+    actions --> config
+    actions --> feature
+    actions --> features
+    actions --> logging_setup
+    actions --> orchestration
+    actions --> runner
+    actions --> state
+
+    compositor --> config
+    dependencies --> config
+    dependencies --> runner
+    feature --> config
+    feature --> runner
+    features --> compositor
+    features --> config
+    features --> feature
+    features --> runner
+    logging_setup --> config
+    orchestration --> config
+    orchestration --> feature
+    orchestration --> features
+    orchestration --> runner
+    state --> config
+
+    init --> config
+    init --> runner
+    init --> feature
+    init --> features
+    init --> actions
+    init --> cli
+    init --> dependencies
+    init --> logging_setup
+    init --> state
+    init --> orchestration
+    init --> version
 ```
 
 ## Module Map
@@ -128,17 +174,24 @@ gamemode/__version__.py          (version string with runtime fallback)
 
 ## Data Flow
 
-```
-cli.main()
-  → load_config_file() → Config()
-  → validate_deps()
-  → action_on() / action_off() / action_status() / action_wrapper()
-    → _prepare_action()
-      → collect_features() → list[Feature]
-      → state.init() → state.locked()
-    → features_enable() / features_disable()
-      → Feature.enable(output) / Feature.disable(output)
-        → Runner.run() → subprocess.run()
+```mermaid
+graph LR
+    A[cli.main()] --> B[load_config_file]
+    B --> C[Config]
+    A --> D[validate_deps]
+    A --> E{action}
+    E -->|toggle| F[action_on / action_off / action_status]
+    E -->|wrapper| G[action_wrapper]
+    F --> H[_prepare_action]
+    G --> H
+    H --> I[collect_features]
+    I --> J[list[Feature]]
+    H --> K[state.init]
+    K --> L[state.locked]
+    F --> M[features_enable / disable]
+    M --> N[Feature.enable / disable]
+    N --> O[Runner.run]
+    O --> P[subprocess.run]
 ```
 
 ## Features

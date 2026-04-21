@@ -23,23 +23,23 @@
           name = "protonfetcher";
 
           packages = with pkgs; [
-            python
             bashInteractive
-            uv
-            zip
-            rsync
-            gnused
-            gnugrep
             coreutils
-            prettier
-            gnutar
-            which
             gawk
-            jq
-            util-linux
             git
-            less
+            gnugrep
+            gnused
+            gnutar
             findutils
+            jq
+            less
+            prettier
+            python
+            rsync
+            util-linux
+            uv
+            which
+            zip
           ];
 
           shellHook = ''
