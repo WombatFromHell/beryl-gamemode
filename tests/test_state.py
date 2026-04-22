@@ -7,12 +7,13 @@ from typing import Any, cast
 
 import pytest
 
-import gamemode
+from gamemode.config import Config
+from gamemode.state import StateManager
 
 
 class TestStateManager:
     def test_init_creates_dir(self, tmp_path_cfg):
-        sm = gamemode.StateManager(tmp_path_cfg)
+        sm = StateManager(tmp_path_cfg)
         sm.init()
         assert tmp_path_cfg.state_dir.is_dir()
 
@@ -73,7 +74,7 @@ class TestStateManager:
     def test_lock_released_on_process_death(self, tmp_path):
         """If a process dies while holding the lock, the kernel releases it."""
         cfg = _cfg(runtime_dir=str(tmp_path))
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         ready_file = tmp_path / "lock_grabber_ready"
         lock_grabber = tmp_path / "lock_grabber.py"
@@ -130,4 +131,4 @@ def _cfg(**overrides):
         runtime_dir="/tmp",
     )
     defaults.update(overrides)
-    return gamemode.Config(**cast(dict[str, Any], defaults))
+    return Config(**cast(dict[str, Any], defaults))

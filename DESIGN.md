@@ -32,7 +32,12 @@ graph LR
     end
 
     subgraph implementation["Implementation"]
-        features[features.py]
+        features_vrr[features/vrr.py]
+        features_pp[features/power_profile.py]
+        features_scx[features/scx_scheduler.py]
+        features_audio[features/audio_priority.py]
+        features_inhibit[features/screen_inhibit.py]
+        features_wrappers[features/wrappers.py]
         state[state.py]
         orchestration[orchestration.py]
     end
@@ -40,10 +45,6 @@ graph LR
     subgraph control["Control"]
         actions[actions.py]
         cli[cli.py]
-    end
-
-    subgraph api["API Surface"]
-        init[__init__.py]
     end
 
     entry_py --> cli
@@ -57,7 +58,7 @@ graph LR
     actions --> compositor
     actions --> config
     actions --> feature
-    actions --> features
+    actions --> features_wrappers
     actions --> logging_setup
     actions --> orchestration
     actions --> runner
@@ -68,37 +69,39 @@ graph LR
     dependencies --> runner
     feature --> config
     feature --> runner
-    features --> compositor
-    features --> config
-    features --> feature
-    features --> runner
+    features_vrr --> compositor
+    features_vrr --> config
+    features_vrr --> runner
+    features_pp --> config
+    features_pp --> runner
+    features_scx --> config
+    features_scx --> runner
+    features_audio --> feature
+    features_inhibit --> compositor
+    features_inhibit --> config
+    features_inhibit --> runner
+    features_wrappers --> config
+    features_wrappers --> runner
     logging_setup --> config
     orchestration --> config
     orchestration --> feature
-    orchestration --> features
+    orchestration --> features_vrr
+    orchestration --> features_pp
+    orchestration --> features_scx
+    orchestration --> features_audio
+    orchestration --> features_inhibit
     orchestration --> runner
     state --> config
-
-    init --> config
-    init --> runner
-    init --> feature
-    init --> features
-    init --> actions
-    init --> cli
-    init --> dependencies
-    init --> logging_setup
-    init --> state
-    init --> orchestration
-    init --> version
 ```
 
 ## Module Map
 
 ### Entry Point
 
-| Module     | Purpose                                  |
-| ---------- | ---------------------------------------- |
-| `entry.py` | Imports and calls `main()` from `cli.py` |
+| Module           | Purpose                                                              |
+| ---------------- | -------------------------------------------------------------------- |
+| `entry.py`       | Imports and calls `main()` from `cli.py`                             |
+| `__version__.py` | Provides `__version__` and `_get_version()` via `importlib.metadata` |
 
 ### CLI Layer
 
@@ -142,11 +145,16 @@ graph LR
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `feature.py` | Defines `Feature` protocol (requires `enable()`/`disable()` returning `FeatureResult`). Provides `_BaseFeature` with gating (`_gate`), guarded execution (`_guarded`), and result logging (`_log_result`). |
 
-### Feature Implementations
+### Feature Implementations (Package)
 
-| Module        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `features.py` | **Toggle features** (inherit `_BaseFeature`): `VRR` (niri VRR toggle via `niri msg`), `PowerProfile` (switches tuned profile via `tuned-adm`), `SCXScheduler` (starts/stops SCX scheduler via `scxctl`), `AudioPriority` (sets `PULSE_LATENCY_MSEC` env var), `ScreenInhibit` (prevents screen lock via DMS or DBus). **Wrapper factories**: `steam_wrapper_factory`, `inhibit_wrapper_factory`, `systemd_run_wrapper_factory`. **`WrapperChain`** — chains command wrappers sequentially. **`SystemdRun`** — prepends `systemd-run` to command argv (not a toggle feature). |
+| Module                       | Purpose                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `features/vrr.py`            | **VRR** — niri VRR toggle via `niri msg`; queries display capability via `jq`, toggles via `niri msg` IPC                                                                                                                                                                                                                            |
+| `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                        |
+| `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                           |
+| `features/audio_priority.py` | **AudioPriority** — sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode; writes to env file and clears on disable                                                                                                                                                                                                              |
+| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver); checks display manager type via `compositor.py`                                                                                                                                                                                                       |
+| `features/wrappers.py`       | **Wrapper factories**: `steam_wrapper_factory` (prepends Steam env script), `inhibit_wrapper_factory` (adds `systemd-inhibit`), `systemd_run_wrapper_factory` (prepends `systemd-run`). **`WrapperChain`** — chains command wrappers sequentially. **`SystemdRun`** — prepends `systemd-run` to command argv (not a toggle feature). |
 
 ### Orchestration
 
@@ -165,12 +173,6 @@ graph LR
 | Module             | Purpose                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------- |
 | `logging_setup.py` | Configures `gamemode` logger with console (stderr) handler and optional file handler. |
-
-### Package Root
-
-| Module        | Purpose                                                                                                                                                                   |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py` | Re-exports entire public API: `Config`, `Runner`, all feature classes, wrapper factories, orchestration functions, action functions, CLI functions, and state management. |
 
 ## Data Flow
 

@@ -13,29 +13,31 @@ from unittest.mock import patch
 
 import pytest
 
-import gamemode
-import gamemode.actions
+from gamemode import actions as gamemode_actions
+from gamemode.actions import _watch_parent, action_wrapper
+from gamemode.config import Config
+from gamemode.feature import Feature, FeatureResult
+from gamemode.runner import Runner
+from gamemode.state import StateManager
 
 
-class FakeFeature(gamemode.Feature):
+class FakeFeature(Feature):
     """Trivial feature that records enable/disable calls."""
 
     def __init__(self, name: str):
         self.name = name
         self.enable_calls: list[str] = []
         self.disable_calls: list[str] = []
-        self.enable_result: gamemode.FeatureResult = gamemode.FeatureResult.did_change(
-            f"{name} enabled"
-        )
-        self.disable_result: gamemode.FeatureResult = gamemode.FeatureResult.did_change(
+        self.enable_result: FeatureResult = FeatureResult.did_change(f"{name} enabled")
+        self.disable_result: FeatureResult = FeatureResult.did_change(
             f"{name} disabled"
         )
 
-    def enable(self, _output: str) -> gamemode.FeatureResult:
+    def enable(self, _output: str) -> FeatureResult:
         self.enable_calls.append(_output)
         return self.enable_result
 
-    def disable(self, _output: str) -> gamemode.FeatureResult:
+    def disable(self, _output: str) -> FeatureResult:
         self.disable_calls.append(_output)
         return self.disable_result
 
@@ -55,16 +57,14 @@ class TestActionWrapper:
     def test_cleanup_fires_on_normal_child_exit(self, tmp_path, logger):
         """When the child exits normally, cleanup must run."""
         cfg = self._make_cfg(tmp_path)
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
-        true_runner = gamemode.Runner(logger)
-        with patch.object(gamemode.actions, "collect_features", return_value=features):
-            with patch.object(gamemode.Runner, "resolve", return_value="/bin/true"):
-                retcode = gamemode.action_wrapper(
-                    cfg, true_runner, logger, ["/bin/true"]
-                )
+        true_runner = Runner(logger)
+        with patch.object(gamemode_actions, "collect_features", return_value=features):
+            with patch.object(Runner, "resolve", return_value="/bin/true"):
+                retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
         assert retcode == 0
         assert feature_a.disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -82,42 +82,46 @@ import sys, os, time, json, signal
 from unittest.mock import patch
 from contextlib import contextmanager
 sys.path.insert(0, {gamemode_dir!r})
-import gamemode
+from gamemode.config import Config
+from gamemode.state import StateManager
+from gamemode.feature import Feature, FeatureResult
+from gamemode.runner import Runner
+from gamemode import actions
 import logging
 
 logger = logging.getLogger("gamemode")
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
-cfg = gamemode.Config(
+cfg = Config(
     enable_scx=False, enable_vrr=False, enable_tuned=False,
     enable_inhibit=False, enable_audio=False, enable_steam=False,
     runtime_dir={str(tmp_path)!r}, vrr_output_default="DP-1",
 )
-state = gamemode.StateManager(cfg)
+state = StateManager(cfg)
 state.init()
 state_file = {str(state_file)!r}
 ready_file = {str(ready_file)!r}
 
-class RecordFeature(gamemode.Feature):
+class RecordFeature(Feature):
     def __init__(self):
         self.en = []
         self.dis = []
     def enable(self, output):
         self.en.append(output)
-        return gamemode.FeatureResult.did_change("en")
+        return FeatureResult.did_change("en")
     def disable(self, output):
         self.dis.append(output)
         with open(state_file, "w") as f:
             json.dump({{"en": self.en, "dis": self.dis}}, f)
-        return gamemode.FeatureResult.did_change("dis")
+        return FeatureResult.did_change("dis")
 
 feat = RecordFeature()
 features = [("fake", feat)]
-runner = gamemode.Runner(logger)
+runner = Runner(logger)
 
 # Capture the original guard
-original_signal_guard = gamemode.actions._signal_guard
+original_signal_guard = actions._signal_guard
 
 @contextmanager
 def delayed_ready_guard(log, child_proc):
@@ -127,9 +131,9 @@ def delayed_ready_guard(log, child_proc):
     with original_signal_guard(log, child_proc) as pending:
         yield pending
 
-with patch.object(gamemode.actions, "collect_features", return_value=features):
-    with patch.object(gamemode.actions, "_signal_guard", delayed_ready_guard):
-        gamemode.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
+with patch.object(actions, "collect_features", return_value=features):
+    with patch.object(actions, "_signal_guard", delayed_ready_guard):
+        actions.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
 """)
         child = subprocess.Popen(
             ["python3", str(child_script)],
@@ -152,7 +156,7 @@ with patch.object(gamemode.actions, "collect_features", return_value=features):
         )
         result = json.loads(state_file.read_text())
         assert result["dis"] == ["DP-1"], f"Cleanup did not run: {result}"
-        assert gamemode.StateManager(cfg).mode == "", "State not cleared"
+        assert StateManager(cfg).mode == "", "State not cleared"
 
     def test_concurrent_wrapper_skips(self, tmp_path_cfg, logger, held_lock):
         """A second wrapper instance should skip when the first holds the lock."""
@@ -165,13 +169,13 @@ with patch.object(gamemode.actions, "collect_features", return_value=features):
             enable_audio=False,
             enable_steam=False,
         )
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
-        runner = gamemode.Runner(logger)
-        with patch.object(gamemode.actions, "collect_features", return_value=features):
-            retcode = gamemode.action_wrapper(cfg, runner, logger, ["/bin/true"])
+        runner = Runner(logger)
+        with patch.object(gamemode_actions, "collect_features", return_value=features):
+            retcode = action_wrapper(cfg, runner, logger, ["/bin/true"])
         assert retcode == 0
         assert feature_a.enable_calls == []
         assert feature_a.disable_calls == []
@@ -179,13 +183,13 @@ with patch.object(gamemode.actions, "collect_features", return_value=features):
     def test_child_nonzero_exitcode_propagated(self, tmp_path, logger):
         """The wrapper must return the child's exit code after cleanup."""
         cfg = self._make_cfg(tmp_path)
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         features = [("fake", FakeFeature("x"))]
-        runner = gamemode.Runner(logger)
-        with patch.object(gamemode.actions, "collect_features", return_value=features):
-            with patch.object(gamemode.Runner, "resolve", return_value="/bin/false"):
-                retcode = gamemode.action_wrapper(cfg, runner, logger, ["/bin/false"])
+        runner = Runner(logger)
+        with patch.object(gamemode_actions, "collect_features", return_value=features):
+            with patch.object(Runner, "resolve", return_value="/bin/false"):
+                retcode = action_wrapper(cfg, runner, logger, ["/bin/false"])
         assert retcode == 1
         assert features[0][1].disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -193,18 +197,14 @@ with patch.object(gamemode.actions, "collect_features", return_value=features):
     def test_cleanup_runs_even_on_oserror(self, tmp_path, logger):
         """If exec fails (OSError), cleanup must still run."""
         cfg = self._make_cfg(tmp_path)
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
-        runner = gamemode.Runner(logger)
-        with patch.object(gamemode.actions, "collect_features", return_value=features):
-            with patch.object(
-                gamemode.Runner, "resolve", return_value="/nonexistent/bin/cmd"
-            ):
-                retcode = gamemode.action_wrapper(
-                    cfg, runner, logger, ["/nonexistent/bin/cmd"]
-                )
+        runner = Runner(logger)
+        with patch.object(gamemode_actions, "collect_features", return_value=features):
+            with patch.object(Runner, "resolve", return_value="/nonexistent/bin/cmd"):
+                retcode = action_wrapper(cfg, runner, logger, ["/nonexistent/bin/cmd"])
         assert retcode == 1
         assert feature_a.disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -225,7 +225,7 @@ class TestWatchParent:
             "find_library",
             return_value=None,
         ):
-            gamemode._watch_parent(logger)  # should not raise
+            _watch_parent(logger)  # should not raise
 
     def test_watch_parent_prctl_fails(self, tmp_path, logger):
         """When prctl returns non-zero, _watch_parent should log a warning."""
@@ -246,7 +246,7 @@ class TestWatchParent:
             return_value="/lib/libc.so",
         ):
             with patch.object(ctypes, "CDLL", return_value=FakeLibc):
-                gamemode._watch_parent(logger)  # should not raise
+                _watch_parent(logger)  # should not raise
 
     def test_watch_parent_success(self, tmp_path, logger):
         """When prctl succeeds, _watch_parent should not raise."""
@@ -263,7 +263,7 @@ class TestWatchParent:
             return_value="/lib/libc.so",
         ):
             with patch.object(ctypes, "CDLL", return_value=FakeLibc):
-                gamemode._watch_parent(logger)  # should not raise
+                _watch_parent(logger)  # should not raise
 
 
 class TestStateManagerLockLifetime:
@@ -278,7 +278,7 @@ class TestStateManagerLockLifetime:
             enable_audio=False,
             enable_steam=False,
         )
-        state = gamemode.StateManager(cfg)
+        state = StateManager(cfg)
         state.init()
         ready_file = tmp_path / "lock_ready"
         child_script = tmp_path / "lock_lifetime_child.py"
@@ -287,20 +287,23 @@ class TestStateManagerLockLifetime:
 import sys, os, time
 from unittest.mock import patch
 sys.path.insert(0, {gamemode_dir!r})
-import gamemode
+from gamemode.config import Config
+from gamemode.feature import Feature, FeatureResult
+from gamemode.runner import Runner
+from gamemode import actions
 import logging
 
 logger = logging.getLogger("gamemode")
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
 
-cfg = gamemode.Config(
+cfg = Config(
     enable_scx=False, enable_vrr=False, enable_tuned=False,
     enable_inhibit=False, enable_audio=False, enable_steam=False,
     runtime_dir={str(tmp_path)!r}, vrr_output_default="DP-1",
 )
 
-class RecordFeature(gamemode.Feature):
+class RecordFeature(Feature):
     def __init__(self):
         self.en = []
         self.dis = []
@@ -309,16 +312,16 @@ class RecordFeature(gamemode.Feature):
         with open({str(ready_file)!r}, "w") as f:
             f.write("ready")
         time.sleep(0.1)
-        return gamemode.FeatureResult.did_change("en")
+        return FeatureResult.did_change("en")
     def disable(self, output):
         self.dis.append(output)
-        return gamemode.FeatureResult.did_change("dis")
+        return FeatureResult.did_change("dis")
 
 feat = RecordFeature()
 features = [("fake", feat)]
 
-with patch.object(gamemode.actions, "collect_features", return_value=features):
-    gamemode.action_wrapper(cfg, gamemode.Runner(logger), logger, ["/bin/true"])
+with patch.object(actions, "collect_features", return_value=features):
+    actions.action_wrapper(cfg, Runner(logger), logger, ["/bin/true"])
 """)
         child = subprocess.Popen(
             ["python3", str(child_script)],
@@ -366,4 +369,4 @@ def _cfg(**overrides):
         runtime_dir="/tmp",
     )
     defaults.update(overrides)
-    return gamemode.Config(**cast(dict[str, Any], defaults))
+    return Config(**cast(dict[str, Any], defaults))

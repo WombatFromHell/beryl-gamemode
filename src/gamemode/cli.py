@@ -55,7 +55,10 @@ VERSION = "Gamemode " + _get_version()
 def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv or argv[0] in ("-h", "--help", "-V", "--version"):
+    if not argv:
+        print(USAGE, end="")
+        return None, []
+    if argv[0] in ("-h", "--help"):
         print(USAGE, end="")
         return None, []
     mode = argv[0]
@@ -74,7 +77,10 @@ def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv or argv[0] in ("-V", "--version"):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE, end="")
+        return 0
+    if argv[0] in ("-V", "--version"):
         print(VERSION)
         return 0
 
@@ -91,14 +97,12 @@ def main(argv: list[str] | None = None) -> int:
     if not validate_deps(config, runner, log):
         return 1
 
-    if mode == "on":
-        return action_on(config, runner, log, debug=debug)
-    if mode == "off":
-        return action_off(config, runner, log, debug=debug)
-    if mode == "status":
-        return action_status(config)
-    if mode == "wrapper":
-        return action_wrapper(config, runner, log, command, debug=debug)
-
-    log.error("Unknown subcommand: '%s'", mode)
-    return 1
+    if mode not in ("on", "off", "status", "wrapper"):
+        log.error("Unknown subcommand: '%s'", mode)
+        return 1
+    return {
+        "on": lambda: action_on(config, runner, log, debug=debug),
+        "off": lambda: action_off(config, runner, log, debug=debug),
+        "status": lambda: action_status(config),
+        "wrapper": lambda: action_wrapper(config, runner, log, command, debug=debug),
+    }[mode]()

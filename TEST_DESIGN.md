@@ -6,17 +6,17 @@
 graph TB
     conftest["tests/conftest.py<br/>central fixtures & factories<br/>FakeRunner, feature_builder, tmp_path_cfg, logger,<br/>runner, niri_session, state_manager, held_lock"]
 
-    test_cli["tests/test_cli.py<br/>10 tests"]
-    test_config["tests/test_config.py<br/>11 tests"]
-    test_feature["tests/test_feature.py<br/>3 tests"]
+    test_cli["tests/test_cli.py<br/>2 tests"]
+    test_config["tests/test_config.py<br/>15 tests"]
+    test_feature["tests/test_feature.py<br/>1 test"]
     test_runner["tests/test_runner.py<br/>7 tests"]
     test_compositor["tests/test_compositor.py<br/>5 tests"]
-    test_deps["tests/test_dependencies.py<br/>2 tests"]
+    test_deps["tests/test_dependencies.py<br/>1 test"]
     test_orch["tests/test_orchestration.py<br/>1 test"]
     test_logging["tests/test_logging.py<br/>2 tests"]
     test_state["tests/test_state.py<br/>11 tests"]
-    test_features["tests/test_features.py<br/>36 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestSteamWrapperPath"]
-    test_actions["tests/test_actions.py<br/>10 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime"]
+    test_features["tests/test_features.py<br/>35 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestSteamWrapper"]
+    test_actions["tests/test_actions.py<br/>9 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime"]
 
     conftest --> test_cli
     conftest --> test_config
@@ -63,32 +63,32 @@ graph TB
 
 ### Unit Tests (by module)
 
-| Test File               | Source Module      | Coverage                                                         | Test Count |
-| ----------------------- | ------------------ | ---------------------------------------------------------------- | ---------- |
-| `test_cli.py`           | `cli.py`           | `cli_parse()` — all argument modes                               | 10         |
-| `test_config.py`        | `config.py`        | `Config` env vars, bool parsing, state_dir derivation            | 11         |
-| `test_feature.py`       | `feature.py`       | `FeatureResult` factory methods (skip/did_change/error)          | 3          |
-| `test_runner.py`        | `runner.py`        | `Runner.resolve()`, `require()`, `run()`, `CheckedCommandRunner` | 7          |
-| `test_compositor.py`    | `compositor.py`    | niri/KDE detection, output resolution                            | 5          |
-| `test_dependencies.py`  | `dependencies.py`  | `validate_deps()` — all feature combinations                     | 2          |
-| `test_orchestration.py` | `orchestration.py` | `collect_features()` — all enabled features                      | 1          |
-| `test_logging.py`       | `logging_setup.py` | console handler, file handler                                    | 2          |
-| `test_state.py`         | `state.py`         | `StateManager` CRUD, file locking, lock contention               | 11         |
+| Test File               | Source Module      | Coverage                                                          | Test Count |
+| ----------------------- | ------------------ | ----------------------------------------------------------------- | ---------- |
+| `test_cli.py`           | `cli.py`           | `cli_parse()` — all argument modes                                | 2          |
+| `test_config.py`        | `config.py`        | `Config` env vars, bool parsing, state_dir derivation, `_env_set` | 15         |
+| `test_feature.py`       | `feature.py`       | `FeatureResult` factory methods (skip/did_change/error)           | 1          |
+| `test_runner.py`        | `runner.py`        | `Runner.resolve()`, `require()`, `run()`, `CheckedCommandRunner`  | 7          |
+| `test_compositor.py`    | `compositor.py`    | niri/KDE detection, output resolution                             | 5          |
+| `test_dependencies.py`  | `dependencies.py`  | `validate_deps()` — all feature combinations                      | 1          |
+| `test_orchestration.py` | `orchestration.py` | `collect_features()` — all enabled features                       | 1          |
+| `test_logging.py`       | `logging_setup.py` | console handler, file handler                                     | 2          |
+| `test_state.py`         | `state.py`         | `StateManager` CRUD, file locking, lock contention                | 11         |
 
 ### Integration Tests
 
-| Test File          | Source Module | Coverage                                                                                                  | Test Count |
-| ------------------ | ------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
-| `test_features.py` | `features.py` | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit, Steam wrapper | 36         |
-| `test_actions.py`  | `actions.py`  | `action_wrapper()` signal handling, cleanup, lock contention, parent-death detection                      | 10         |
+| Test File          | Source Module         | Coverage                                                                                                  | Test Count |
+| ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
+| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit, Steam wrapper | 35         |
+| `test_actions.py`  | `actions.py`          | `action_wrapper()` signal handling, cleanup, lock contention, parent-death detection, concurrent wrappers | 9          |
 
 ### Test Coverage Summary
 
 | Category    | Files  | Tests  | Scope                                       |
 | ----------- | ------ | ------ | ------------------------------------------- |
-| Unit        | 8      | 52     | Individual module functions/classes         |
-| Integration | 2      | 46     | Cross-module: features, actions, subprocess |
-| **Total**   | **10** | **98** | All public API paths                        |
+| Unit        | 9      | 45     | Individual module functions/classes         |
+| Integration | 2      | 44     | Cross-module: features, actions, subprocess |
+| **Total**   | **11** | **89** | All public API paths                        |
 
 ### Feature Test Matrix
 

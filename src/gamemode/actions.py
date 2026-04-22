@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import ctypes
 import ctypes.util
 import logging
@@ -10,16 +11,18 @@ import signal
 import subprocess
 import sys
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Any, Iterator
 
 from gamemode.compositor import compositor_is_niri, output_resolve, session_is_kde
 from gamemode.config import Config
 from gamemode.feature import Feature
-from gamemode.features import WRAPPER_FACTORIES, WrapperChain
+from gamemode.features.wrappers import WRAPPER_FACTORIES, WrapperChain
 from gamemode.logging_setup import setup_logging
 from gamemode.orchestration import collect_features, features_disable, features_enable
 from gamemode.runner import Runner
 from gamemode.state import StateManager
+
+_HandlerType = Any
 
 
 def _prepare_action(
@@ -64,9 +67,16 @@ def action_off(
     return 0
 
 
-def action_status(config: Config) -> int:
-    state = StateManager(config)
-    state.init()
+def _alive_stale(
+    state: StateManager, mode: str | None, pid: int | None
+) -> tuple[bool | None, bool | None]:
+    if mode == "wrapper" and pid is not None:
+        alive = state.pid_alive()
+        return alive, not alive
+    return None, None
+
+
+def _build_status_lines(config: Config, state: StateManager) -> list[str]:
     mode = state.mode
     pid = state.pid()
     cmd = state.cmd()
@@ -75,12 +85,8 @@ def action_status(config: Config) -> int:
     session = os.environ.get("XDG_SESSION_DESKTOP", "(unset)")
     current_desktop = os.environ.get("XDG_CURRENT_DESKTOP", "(unset)")
     output = output_resolve(config)
-    stale: bool | None = None
-    alive: bool | None = None
-    if mode == "wrapper" and pid is not None:
-        alive = state.pid_alive()
-        stale = not alive
-    lines = [
+    alive, stale = _alive_stale(state, mode, pid)
+    return [
         f"State:            {mode or '(none)'}",
         f"Mode:             {mode or '(none)'}",
         f"PID:              {pid if pid is not None else 'N/A (toggle mode)'}",
@@ -96,7 +102,12 @@ def action_status(config: Config) -> int:
         "",
         f"State dir:        {config.state_dir}",
     ]
-    print("\n".join(lines))
+
+
+def action_status(config: Config) -> int:
+    state = StateManager(config)
+    state.init()
+    print("\n".join(_build_status_lines(config, state)))
     return 0
 
 
@@ -129,9 +140,7 @@ def _signal_guard(
     log: logging.Logger, child_proc: list[subprocess.Popen | None]
 ) -> Iterator[int]:
     pending_signal = [0]
-    _orig_term = signal.getsignal(signal.SIGTERM)
-    _orig_int = signal.getsignal(signal.SIGINT)
-    _orig_hup = signal.getsignal(signal.SIGHUP) if hasattr(signal, "SIGHUP") else None
+    _orig_handlers: dict[int, _HandlerType] = {}
 
     def _handler(signum: int, _frame: object) -> None:
         log.info("Received signal %s, terminating child and cleaning up", signum)
@@ -144,27 +153,22 @@ def _signal_guard(
         except OSError:
             pass
 
-    try:
-        signal.signal(signal.SIGTERM, _handler)
-        signal.signal(signal.SIGINT, _handler)
-        if hasattr(signal, "SIGHUP"):
-            signal.signal(signal.SIGHUP, _handler)
-    except (ValueError, OSError):
-        pending_signal[0] = 0
-        _orig_term = None
-        _orig_int = None
-        _orig_hup = None
+    signals_to_hook = [signal.SIGTERM, signal.SIGINT]
+    if hasattr(signal, "SIGHUP"):
+        signals_to_hook.append(signal.SIGHUP)
+
+    for sig in signals_to_hook:
+        try:
+            _orig_handlers[sig] = signal.signal(sig, _handler)
+        except (ValueError, OSError):
+            pass
+
     try:
         yield pending_signal[0]
     finally:
-        try:
-            signal.signal(signal.SIGTERM, _orig_term)
-            signal.signal(signal.SIGINT, _orig_int)
-        except (ValueError, OSError):
-            pass
-        if _orig_hup is not None:
+        for sig, orig in _orig_handlers.items():
             try:
-                signal.signal(signal.SIGHUP, _orig_hup)
+                signal.signal(sig, orig)
             except (ValueError, OSError):
                 pass
 
@@ -181,6 +185,27 @@ def _watch_parent(log: logging.Logger) -> None:
             log.warning("prctl(PR_SET_PDEATHSIG) failed: %s", os.strerror(-ret))
     except (OSError, AttributeError) as exc:
         log.warning("prctl unavailable for parent-death detection: %s", exc)
+
+
+def _run_child(
+    exec_cmd: list[str],
+    log: logging.Logger,
+    cleanup: collections.abc.Callable[[], None],
+) -> int:
+    child_proc: list[subprocess.Popen | None] = [None]
+    try:
+        child_proc[0] = subprocess.Popen(exec_cmd, start_new_session=True)
+    except OSError as exc:
+        log.error("Failed to execute command: %s", exc)
+        cleanup()
+        return 1
+
+    with _signal_guard(log, child_proc) as pending_signal:
+        retcode = child_proc[0].wait()
+    cleanup()
+    if pending_signal:
+        sys.exit(128 + pending_signal)
+    return retcode
 
 
 def action_wrapper(
@@ -204,15 +229,15 @@ def action_wrapper(
         setup_logging(config, to_file=debug)
 
         already_active = state.is_active or state.is_wrapper
-        if already_active:
-            log.info(
-                "Gamemode already active. Wrapper will only apply configured wrappers (feature toggles skipped)."
-            )
-            features = []
-        else:
+        if not already_active:
             state.mark_wrapper(command)
             features = collect_features(config, runner, log)
             features_enable(features, output, log)
+        else:
+            features = []
+            log.info(
+                "Gamemode already active. Wrapper will only apply configured wrappers (feature toggles skipped)."
+            )
 
         cleanup = _build_cleanup_closure(
             features, output, log, state, preserve_state=already_active
@@ -224,19 +249,4 @@ def action_wrapper(
                 chain.add_factory(factory, config, runner, log)
 
         exec_cmd = chain.apply(command)
-        child_proc: list[subprocess.Popen | None] = [None]
-        try:
-            child_proc[0] = subprocess.Popen(exec_cmd, start_new_session=True)
-        except OSError as exc:
-            log.error("Failed to execute command: %s", exc)
-            cleanup()
-            return 1
-
-        try:
-            with _signal_guard(log, child_proc) as pending_signal:
-                retcode = child_proc[0].wait()
-        finally:
-            cleanup()
-        if pending_signal:
-            sys.exit(128 + pending_signal)
-        return retcode
+        return _run_child(exec_cmd, log, cleanup)

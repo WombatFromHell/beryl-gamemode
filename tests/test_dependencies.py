@@ -4,7 +4,8 @@ from typing import Any, cast
 
 import pytest
 
-import gamemode
+from gamemode.config import Config
+from gamemode.dependencies import validate_deps
 from gamemode.runner import Runner
 
 
@@ -40,7 +41,7 @@ class TestValidateDeps:
             "systemd-inhibit", "/usr/bin/systemd-inhibit" if enable_inhibit else None
         )
         r.when_resolved("dbus-send", "/usr/bin/dbus-send" if enable_inhibit else None)
-        ok = gamemode.validate_deps(cfg, r, logger)
+        ok = validate_deps(cfg, r, logger)
         if enable_scx or enable_vrr or enable_tuned or enable_inhibit:
             all_present = all(
                 [
@@ -74,7 +75,7 @@ def _cfg(**overrides):
         runtime_dir="/tmp",
     )
     defaults.update(overrides)
-    return gamemode.Config(**cast(dict[str, Any], defaults))
+    return Config(**cast(dict[str, Any], defaults))
 
 
 class _FakeRunner(Runner):

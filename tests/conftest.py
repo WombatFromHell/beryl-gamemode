@@ -9,14 +9,16 @@ from typing import Any
 
 import pytest
 
-import gamemode
+from gamemode.config import Config
+from gamemode.runner import Runner
+from gamemode.state import StateManager
 
 # ============================================================================
 # Test support helpers
 # ============================================================================
 
 
-def _cfg(**overrides: Any) -> gamemode.Config:
+def _cfg(**overrides: Any) -> Config:
     """Build a frozen Config with every toggle off and paths in *tmp_path*."""
     defaults: dict[str, Any] = dict(
         enable_scx=False,
@@ -35,7 +37,7 @@ def _cfg(**overrides: Any) -> gamemode.Config:
         runtime_dir="/tmp",
     )
     defaults.update(overrides)
-    return gamemode.Config(**defaults)
+    return Config(**defaults)
 
 
 def _cp(stdout: str = "", stderr: str = "", rc: int = 0):
@@ -48,7 +50,7 @@ def _resolve(cmd: str) -> dict[str, str]:
     return {cmd: f"/usr/bin/{cmd}"}
 
 
-class FakeRunner(gamemode.Runner):
+class FakeRunner(Runner):
     """Runner subclass that returns canned responses.
 
     Usage::
@@ -225,7 +227,7 @@ def logger():
 @pytest.fixture()
 def runner(logger):
     """A real Runner backed by the fixture logger."""
-    return gamemode.Runner(logger)
+    return Runner(logger)
 
 
 @pytest.fixture()
@@ -233,7 +235,7 @@ def niri_session(monkeypatch):
     """Fake a niri compositor session via environment variables."""
     monkeypatch.setenv("XDG_SESSION_DESKTOP", "niri")
     monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-    monkeypatch.setattr(gamemode, "compositor_is_niri", lambda: True)
+    monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda: True)
 
 
 @pytest.fixture()
@@ -265,7 +267,7 @@ def feature_builder(tmp_path_cfg, logger):
 @pytest.fixture()
 def state_manager(tmp_path_cfg):
     """Provide an already-initialised StateManager."""
-    sm = gamemode.StateManager(tmp_path_cfg)
+    sm = StateManager(tmp_path_cfg)
     sm.init()
     return sm
 

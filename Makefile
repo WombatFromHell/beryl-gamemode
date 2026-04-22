@@ -103,8 +103,15 @@ format: prettier
 	uv run ruff check --select I ./src ./tests --fix; \
 	uv run ruff format ./src ./tests
 
-radon:
-	uv run radon cc ./src -a
+radon-cc:
+	@echo "Running Radon Cyclomatic-Complexity check..."
+	uv run radon cc ./src --show-complexity --min B -a
+
+radon-mi:
+	@echo "Running Radon Maintainability-Index check..."
+	uv run radon mi ./src --show --min A --max C --sort
+
+radon: radon-cc radon-mi
 
 quality: lint format
 
@@ -112,5 +119,5 @@ ci: configure test quality build
 
 all: build install
 
-.PHONY: build install test lint prettier format radon quality clean all configure ci
-.SILENT: build install test lint prettier format radon quality clean all configure ci
+.PHONY: build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci
+.SILENT: build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci

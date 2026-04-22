@@ -7,13 +7,11 @@ from typing import cast
 
 from gamemode.config import Config
 from gamemode.feature import Feature, _BaseFeature
-from gamemode.features import (
-    VRR,
-    AudioPriority,
-    PowerProfile,
-    ScreenInhibit,
-    SCXScheduler,
-)
+from gamemode.features.audio_priority import AudioPriority
+from gamemode.features.power_profile import PowerProfile
+from gamemode.features.screen_inhibit import ScreenInhibit
+from gamemode.features.scx_scheduler import SCXScheduler
+from gamemode.features.vrr import VRR
 from gamemode.runner import Runner
 
 

@@ -7,22 +7,35 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _should_skip_line(line: str) -> bool:
+    """Return True if the line should be skipped."""
+    return not line or line.startswith("#") or "=" not in line
+
+
+def _parse_line(line: str) -> tuple[str, str] | None:
+    """Parse a KEY=VALUE line and strip surrounding quotes from the value."""
+    key, _, val = line.partition("=")
+    key = key.strip()
+    val = val.strip()
+    if len(val) >= 2 and val[0] in ("'", '"') and val[0] == val[-1]:
+        val = val[1:-1]
+    return key, val
+
+
 def load_config_file(path: Path = Path.home() / ".config" / "gamemode.conf") -> None:
     """Load KEY=VALUE config from file into os.environ (env vars take precedence)."""
     if not path.is_file():
         return
     try:
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
+        for raw_line in path.read_text().splitlines():
+            line = raw_line.strip()
+            if _should_skip_line(line):
                 continue
-            key, _, val = line.partition("=")
-            key = key.strip()
-            if len(val) >= 2 and val[0] in ("'", '"') and val[0] == val[-1]:
-                val = val[1:-1]
-            val = val.strip()
-            if key not in os.environ:
-                os.environ[key] = val
+            parsed = _parse_line(line)
+            if parsed is not None:
+                key, val = parsed
+                if key not in os.environ:
+                    os.environ[key] = val
     except OSError:
         pass
 

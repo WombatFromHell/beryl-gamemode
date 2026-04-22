@@ -2,7 +2,7 @@
 
 import pytest
 
-import gamemode
+from gamemode.cli import cli_parse
 
 
 class TestCliParser:
@@ -21,11 +21,11 @@ class TestCliParser:
         ],
     )
     def test_cli_parse(self, argv, expected_mode, expected_cmd, capsys):
-        mode, cmd = gamemode.cli_parse(argv)
+        mode, cmd = cli_parse(argv)
         assert mode == expected_mode
         assert cmd == expected_cmd
 
     def test_wrapper_empty_returns_none(self, capsys):
-        mode, cmd = gamemode.cli_parse(["--"])
+        mode, cmd = cli_parse(["--"])
         assert mode is None
         assert cmd == []

@@ -2,7 +2,7 @@
 
 import pytest
 
-import gamemode
+from gamemode.feature import FeatureResult
 
 
 class TestFeatureResult:
@@ -10,14 +10,14 @@ class TestFeatureResult:
         "factory,attrs",
         [
             (
-                lambda: gamemode.FeatureResult.skip("no niri"),
+                lambda: FeatureResult.skip("no niri"),
                 {"ok": True, "skipped": True, "changed": False},
             ),
             (
-                lambda: gamemode.FeatureResult.did_change("on"),
+                lambda: FeatureResult.did_change("on"),
                 {"changed": True, "ok": True},
             ),
-            (lambda: gamemode.FeatureResult.error("failed"), {"ok": False}),
+            (lambda: FeatureResult.error("failed"), {"ok": False}),
         ],
     )
     def test_factories(self, factory, attrs):
