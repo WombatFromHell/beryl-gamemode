@@ -9,6 +9,8 @@ Gamemode is a gaming performance toggle tool for Linux desktops, targeting the *
 
 ## Module Dependency Graph
 
+All edges represent direct `import`/`from ... import` relationships.
+
 ```mermaid
 graph LR
     subgraph entry["Entry Point"]
@@ -27,7 +29,7 @@ graph LR
     end
 
     subgraph protocol["Protocol"]
-        feature[feature.py]
+        feature[feature.py<br/>FeatureResult, Feature, _BaseFeature]
         dependencies[dependencies.py]
     end
 
@@ -71,16 +73,21 @@ graph LR
     feature --> runner
     features_vrr --> compositor
     features_vrr --> config
+    features_vrr --> feature
     features_vrr --> runner
     features_pp --> config
+    features_pp --> feature
     features_pp --> runner
     features_scx --> config
+    features_scx --> feature
     features_scx --> runner
     features_audio --> feature
     features_inhibit --> compositor
     features_inhibit --> config
+    features_inhibit --> feature
     features_inhibit --> runner
     features_wrappers --> config
+    features_wrappers --> feature
     features_wrappers --> runner
     logging_setup --> config
     orchestration --> config
@@ -176,25 +183,141 @@ graph LR
 
 ## Data Flow
 
+### Shared Entry
+
 ```mermaid
 graph LR
     A[cli.main()] --> B[load_config_file]
     B --> C[Config]
-    A --> D[validate_deps]
-    A --> E{action}
-    E -->|toggle| F[action_on / action_off / action_status]
-    E -->|wrapper| G[action_wrapper]
-    F --> H[_prepare_action]
-    G --> H
-    H --> I[collect_features]
-    I --> J[list[Feature]]
-    H --> K[state.init]
-    K --> L[state.locked]
-    F --> M[features_enable / disable]
-    M --> N[Feature.enable / disable]
-    N --> O[Runner.run]
-    O --> P[subprocess.run]
+    A --> D[setup_logging]
+    A --> E[cli_parse]
+    E --> F{mode}
+    F -->|on| G[action_on]
+    F -->|off| H[action_off]
+    F -->|status| I[action_status]
+    F -->|wrapper| J[action_wrapper]
+    A --> K[validate_deps]
 ```
+
+### Toggle Mode (on / off)
+
+```mermaid
+graph TD
+    A[action_on / action_off] --> B[_prepare_action]
+    B --> C[output_resolve]
+    B --> D[StateManager.init]
+    B --> E[collect_features]
+    E --> F[list[Feature]]
+    A --> G{state check}
+    G -->|already active| H[return 0 idempotent]
+    G -->|wrapper active| H
+    G -->|fresh| I[state.mark_active]
+    I --> J[features_enable / features_disable]
+    J --> K[Feature.enable / disable]
+    K --> L[Runner.run / capture / pipe]
+    L --> M[subprocess.run]
+    A --> N[state.clear]
+```
+
+### Wrapper Mode
+
+```mermaid
+graph TD
+    A[action_wrapper] --> B[output_resolve]
+    A --> C[StateManager.init]
+    A --> D[_watch_parent<br/>prctl PR_SET_PDEATHSIG]
+    A --> E{state.locked}
+    E -->|lock held| F[skip — another wrapper active]
+    E -->|acquired| G{already active?}
+    G -->|yes| H[skip features — apply wrappers only]
+    G -->|no| I[state.mark_wrapper]
+    I --> J[collect_features]
+    J --> K[features_enable]
+    K --> L[Feature.enable]
+    H --> M[build WrapperChain]
+    L --> M
+    M --> N[WRAPPER_FACTORIES<br/>steam, inhibit, systemd_run]
+    N --> O[_run_child]
+    O --> P[subprocess.Popen]
+    O --> Q[_signal_guard<br/>SIGTERM/SIGINT/SIGHUP]
+    Q --> R[child.wait]
+    R --> S[cleanup closure]
+    S --> T[features_disable]
+    T --> U[state.clear if preserve_state=False]
+```
+
+### Status Mode
+
+```mermaid
+graph LR
+    A[action_status] --> B[StateManager.init]
+    B --> C[_build_status_lines]
+    C --> D[compositor_is_niri]
+    C --> E[session_is_kde]
+    C --> F[output_resolve]
+    C --> G[state.mode / pid / cmd]
+    D --> H[print diagnostics]
+    E --> H
+    F --> H
+    G --> H
+```
+
+## Feature Interdependencies
+
+Features depend on external commands, compositor state, and environment variables. Missing dependencies are handled gracefully (skip/noop) rather than failing.
+
+```mermaid
+graph TD
+    subgraph features["Feature Implementations"]
+        vrr["VRR"]
+        pp["PowerProfile"]
+        scx["SCXScheduler"]
+        audio["AudioPriority"]
+        inhibit["ScreenInhibit"]
+    end
+
+    subgraph external["External Commands"]
+        niri["niri msg"]
+        jq["jq"]
+        tuned["tuned-adm"]
+        scxctl["scxctl"]
+        dms["dms ipc"]
+        dbus["dbus-send"]
+    end
+
+    subgraph env["Environment / State"]
+        niri_detect["compositor_is_niri()"]
+        pulse["PULSE_LATENCY_MSEC"]
+        audio_file["audio_env_file"]
+    end
+
+    vrr -->|queries outputs| niri
+    vrr -->|parses JSON| jq
+    vrr -->|toggle VRR| niri
+    vrr -.->|requires niri running| niri_detect
+
+    pp -->|active profile| tuned
+    pp -->|switch profile| tuned
+
+    scx -->|status/start/stop| scxctl
+
+    audio -->|set/clear| pulse
+    audio -->|write/remove| audio_file
+
+    inhibit -->|niri only| dms
+    inhibit -->|fallback always| dbus
+    inhibit -.->|DMS path requires niri| niri_detect
+```
+
+### Feature Execution Rules
+
+| Feature       | Gate             | Compositor requirement | External deps          | Fallback behavior                      |
+| ------------- | ---------------- | ---------------------- | ---------------------- | -------------------------------------- |
+| VRR           | `enable_vrr`     | niri only              | `niri`, `jq`           | Skip if not niri or not capable        |
+| PowerProfile  | `enable_tuned`   | None                   | `tuned-adm`            | Noop if already on correct profile     |
+| SCXScheduler  | `enable_scx`     | None                   | `scxctl`               | Noop if already loaded                 |
+| AudioPriority | `enable_audio`   | None                   | None (env + file only) | Always succeeds                        |
+| ScreenInhibit | `enable_inhibit` | niri for DMS path      | `dms`, `dbus-send`     | Falls back to ScreenSaver if DMS fails |
 
 ## Features
 

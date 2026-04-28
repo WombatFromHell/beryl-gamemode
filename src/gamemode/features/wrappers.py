@@ -54,10 +54,8 @@ def steam_wrapper_factory(
 def inhibit_wrapper_factory(
     config: Config, runner: Runner, log: logging.Logger
 ) -> CommandWrapper | None:
-    if not config.enable_inhibit:
-        return None
     inhibit = runner.resolve("systemd-inhibit")
-    if inhibit is None:
+    if not config.enable_inhibit or inhibit is None:
         return None
 
     def wrapper(argv: list[str]) -> list[str]:

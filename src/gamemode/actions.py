@@ -25,13 +25,21 @@ from gamemode.state import StateManager
 _HandlerType = Any
 
 
-def _prepare_action(
-    config: Config, runner: Runner, log: logging.Logger, *, debug: bool = False
-) -> tuple[str, list[tuple[str, Feature]], StateManager]:
+def _prepare_base(
+    config: Config, log: logging.Logger, *, debug: bool = False
+) -> tuple[str, StateManager]:
+    """Shared setup for all action entry points."""
     output = output_resolve(config)
     state = StateManager(config)
     state.init()
     setup_logging(config, to_file=debug)
+    return output, state
+
+
+def _prepare_action(
+    config: Config, runner: Runner, log: logging.Logger, *, debug: bool = False
+) -> tuple[str, collections.abc.Sequence[tuple[str, Feature]], StateManager]:
+    output, state = _prepare_base(config, log, debug=debug)
     features = collect_features(config, runner, log)
     return output, features, state
 
@@ -112,7 +120,7 @@ def action_status(config: Config) -> int:
 
 
 def _build_cleanup_closure(
-    features: list[tuple[str, Feature]],
+    features: collections.abc.Sequence[tuple[str, Feature]],
     output: str,
     log: logging.Logger,
     state: StateManager,
@@ -216,9 +224,7 @@ def action_wrapper(
     *,
     debug: bool = False,
 ) -> int:
-    output = output_resolve(config)
-    state = StateManager(config)
-    state.init()
+    output, state = _prepare_base(config, log, debug=debug)
     log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
     _watch_parent(log)
 
@@ -226,7 +232,6 @@ def action_wrapper(
         if not acquired:
             log.debug("Another wrapper instance holds the lock, skipping")
             return 0
-        setup_logging(config, to_file=debug)
 
         already_active = state.is_active or state.is_wrapper
         if not already_active:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import logging
 from typing import cast
 
@@ -17,7 +18,7 @@ from gamemode.runner import Runner
 
 def collect_features(
     config: Config, runner: Runner, log: logging.Logger
-) -> list[tuple[str, Feature]]:
+) -> collections.abc.Sequence[tuple[str, Feature]]:
     result: list[tuple[str, Feature]] = []
     for name, feat in [
         ("tuned", PowerProfile(config, runner, log)),
@@ -32,7 +33,10 @@ def collect_features(
 
 
 def _apply_features(
-    features: list[tuple[str, Feature]], output: str, log: logging.Logger, method: str
+    features: collections.abc.Sequence[tuple[str, Feature]],
+    output: str,
+    log: logging.Logger,
+    method: str,
 ) -> None:
     log.debug("%sing features for output: %s", method.capitalize(), output)
     for name, feat in features:
@@ -41,12 +45,16 @@ def _apply_features(
 
 
 def features_enable(
-    features: list[tuple[str, Feature]], output: str, log: logging.Logger
+    features: collections.abc.Sequence[tuple[str, Feature]],
+    output: str,
+    log: logging.Logger,
 ) -> None:
     _apply_features(features, output, log, "enable")
 
 
 def features_disable(
-    features: list[tuple[str, Feature]], output: str, log: logging.Logger
+    features: collections.abc.Sequence[tuple[str, Feature]],
+    output: str,
+    log: logging.Logger,
 ) -> None:
     _apply_features(features, output, log, "disable")

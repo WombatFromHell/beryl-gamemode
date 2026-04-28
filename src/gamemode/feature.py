@@ -6,7 +6,7 @@ import logging
 from typing import Callable, Protocol, runtime_checkable
 
 from gamemode.config import Config
-from gamemode.runner import Runner
+from gamemode.runner import CheckedCommandRunner, Runner
 
 
 class FeatureResult:
@@ -66,6 +66,40 @@ class _BaseFeature:
         self._run = runner
         self._log = log
 
+    # -- abstract hooks --------------------------------------------------
+
+    _feature_name: str = ""
+    """Human-readable name for logging; override in subclasses."""
+
+    @property
+    def _feature_enabled(self) -> bool:
+        """Return the config flag that gates this feature."""
+        raise NotImplementedError
+
+    def _do_enable(self, output: str) -> FeatureResult:
+        """Implement the actual enable logic (no gating)."""
+        raise NotImplementedError
+
+    def _do_disable(self, output: str) -> FeatureResult:
+        """Implement the actual disable logic (no gating)."""
+        raise NotImplementedError
+
+    # -- public API ------------------------------------------------------
+
+    def enable(self, output: str) -> FeatureResult:
+        gate = self._gate(self._feature_enabled, self._feature_name)
+        if gate is not None:
+            return gate
+        return self._do_enable(output)
+
+    def disable(self, output: str) -> FeatureResult:
+        gate = self._gate(self._feature_enabled, self._feature_name)
+        if gate is not None:
+            return gate
+        return self._do_disable(output)
+
+    # -- helpers ----------------------------------------------------------
+
     def _gate(self, enabled: bool, _name: str) -> FeatureResult | None:
         if not enabled:
             return FeatureResult.skip("disabled by config")
@@ -78,6 +112,10 @@ class _BaseFeature:
         if gate is not None:
             return gate
         return fn()
+
+    def make_checked_cmd(self, cmd: str, feature: str = "") -> CheckedCommandRunner:
+        """Create a CheckedCommandRunner via the base runner."""
+        return self._run.make_checked_runner(cmd, feature)
 
     @staticmethod
     def _log_result(name: str, result: FeatureResult, log: logging.Logger) -> None:

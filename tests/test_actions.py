@@ -5,64 +5,35 @@ import ctypes.util
 import json
 import os
 import signal
-import subprocess
 import time
 from pathlib import Path
-from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
+from conftest import FakeFeature, _cfg, _state, mock_collect_features, spawn_child
 
 from gamemode import actions as gamemode_actions
-from gamemode.actions import _watch_parent, action_wrapper
-from gamemode.config import Config
-from gamemode.feature import Feature, FeatureResult
+from gamemode.actions import (
+    _watch_parent,
+    action_off,
+    action_on,
+    action_status,
+    action_wrapper,
+)
 from gamemode.runner import Runner
 from gamemode.state import StateManager
 
 
-class FakeFeature(Feature):
-    """Trivial feature that records enable/disable calls."""
-
-    def __init__(self, name: str):
-        self.name = name
-        self.enable_calls: list[str] = []
-        self.disable_calls: list[str] = []
-        self.enable_result: FeatureResult = FeatureResult.did_change(f"{name} enabled")
-        self.disable_result: FeatureResult = FeatureResult.did_change(
-            f"{name} disabled"
-        )
-
-    def enable(self, _output: str) -> FeatureResult:
-        self.enable_calls.append(_output)
-        return self.enable_result
-
-    def disable(self, _output: str) -> FeatureResult:
-        self.disable_calls.append(_output)
-        return self.disable_result
-
-
 class TestActionWrapper:
-    def _make_cfg(self, tmp_path):
-        return _cfg(
-            runtime_dir=str(tmp_path),
-            enable_scx=False,
-            enable_vrr=False,
-            enable_tuned=False,
-            enable_inhibit=False,
-            enable_audio=False,
-            enable_steam=False,
-        )
-
     def test_cleanup_fires_on_normal_child_exit(self, tmp_path, logger):
         """When the child exits normally, cleanup must run."""
-        cfg = self._make_cfg(tmp_path)
-        state = StateManager(cfg)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
         true_runner = Runner(logger)
-        with patch.object(gamemode_actions, "collect_features", return_value=features):
+        with mock_collect_features(features):
             with patch.object(Runner, "resolve", return_value="/bin/true"):
                 retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
         assert retcode == 0
@@ -72,12 +43,13 @@ class TestActionWrapper:
     @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
     def test_cleanup_fires_on_signal(self, tmp_path, logger, signum):
         """When the wrapper receives SIGTERM/SIGINT, cleanup must run before exit."""
-        cfg = self._make_cfg(tmp_path)
+        cfg = _cfg(runtime_dir=str(tmp_path))
         state_file = tmp_path / f"feature_state_{signum.name.lower()}.json"
         ready_file = tmp_path / "signal_ready"
         gamemode_dir = str(Path(__file__).parent.parent / "src")
-        child_script = tmp_path / "wrapper_signal.py"
-        child_script.write_text(f"""
+        child = spawn_child(
+            tmp_path,
+            f"""
 import sys, os, time, json, signal
 from unittest.mock import patch
 from contextlib import contextmanager
@@ -134,21 +106,10 @@ def delayed_ready_guard(log, child_proc):
 with patch.object(actions, "collect_features", return_value=features):
     with patch.object(actions, "_signal_guard", delayed_ready_guard):
         actions.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
-""")
-        child = subprocess.Popen(
-            ["python3", str(child_script)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+""",
+            script_name="wrapper_signal.py",
+            ready_name="signal_ready",
         )
-        for _ in range(50):
-            if ready_file.exists():
-                break
-            time.sleep(0.1)
-        else:
-            child.kill()
-            child.wait()
-            pytest.fail("Wrapper did not reach running state")
         child.send_signal(signum)
         child.wait(timeout=10)
         assert state_file.exists(), (
@@ -160,21 +121,13 @@ with patch.object(actions, "collect_features", return_value=features):
 
     def test_concurrent_wrapper_skips(self, tmp_path_cfg, logger, held_lock):
         """A second wrapper instance should skip when the first holds the lock."""
-        cfg = _cfg(
-            runtime_dir=tmp_path_cfg.runtime_dir,
-            enable_scx=False,
-            enable_vrr=False,
-            enable_tuned=False,
-            enable_inhibit=False,
-            enable_audio=False,
-            enable_steam=False,
-        )
-        state = StateManager(cfg)
+        cfg = _cfg(runtime_dir=tmp_path_cfg.runtime_dir)
+        state = _state(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
         runner = Runner(logger)
-        with patch.object(gamemode_actions, "collect_features", return_value=features):
+        with mock_collect_features(features):
             retcode = action_wrapper(cfg, runner, logger, ["/bin/true"])
         assert retcode == 0
         assert feature_a.enable_calls == []
@@ -182,12 +135,12 @@ with patch.object(actions, "collect_features", return_value=features):
 
     def test_child_nonzero_exitcode_propagated(self, tmp_path, logger):
         """The wrapper must return the child's exit code after cleanup."""
-        cfg = self._make_cfg(tmp_path)
-        state = StateManager(cfg)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
         state.init()
         features = [("fake", FakeFeature("x"))]
         runner = Runner(logger)
-        with patch.object(gamemode_actions, "collect_features", return_value=features):
+        with mock_collect_features(features):
             with patch.object(Runner, "resolve", return_value="/bin/false"):
                 retcode = action_wrapper(cfg, runner, logger, ["/bin/false"])
         assert retcode == 1
@@ -196,13 +149,13 @@ with patch.object(actions, "collect_features", return_value=features):
 
     def test_cleanup_runs_even_on_oserror(self, tmp_path, logger):
         """If exec fails (OSError), cleanup must still run."""
-        cfg = self._make_cfg(tmp_path)
-        state = StateManager(cfg)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
         state.init()
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
         runner = Runner(logger)
-        with patch.object(gamemode_actions, "collect_features", return_value=features):
+        with mock_collect_features(features):
             with patch.object(Runner, "resolve", return_value="/nonexistent/bin/cmd"):
                 retcode = action_wrapper(cfg, runner, logger, ["/nonexistent/bin/cmd"])
         assert retcode == 1
@@ -269,21 +222,14 @@ class TestWatchParent:
 class TestStateManagerLockLifetime:
     def test_lock_held_during_child_execution(self, tmp_path, logger):
         """Integration: while action_wrapper runs a child, the lock must be held."""
-        cfg = _cfg(
-            runtime_dir=str(tmp_path),
-            enable_scx=False,
-            enable_vrr=False,
-            enable_tuned=False,
-            enable_inhibit=False,
-            enable_audio=False,
-            enable_steam=False,
-        )
-        state = StateManager(cfg)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
         state.init()
         ready_file = tmp_path / "lock_ready"
-        child_script = tmp_path / "lock_lifetime_child.py"
         gamemode_dir = str(Path(__file__).parent.parent / "src")
-        child_script.write_text(f"""
+        child = spawn_child(
+            tmp_path,
+            f"""
 import sys, os, time
 from unittest.mock import patch
 sys.path.insert(0, {gamemode_dir!r})
@@ -322,20 +268,10 @@ features = [("fake", feat)]
 
 with patch.object(actions, "collect_features", return_value=features):
     actions.action_wrapper(cfg, Runner(logger), logger, ["/bin/true"])
-""")
-        child = subprocess.Popen(
-            ["python3", str(child_script)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+""",
+            script_name="lock_lifetime_child.py",
+            ready_name="lock_ready",
         )
-        for _ in range(50):
-            if ready_file.exists():
-                break
-            time.sleep(0.1)
-        else:
-            child.kill()
-            child.wait()
-            pytest.fail("Child never became ready")
         for _ in range(50):
             probe_fd = os.open(str(cfg.lock_file), os.O_CREAT | os.O_WRONLY)
             try:
@@ -351,22 +287,113 @@ with patch.object(actions, "collect_features", return_value=features):
         child.wait(timeout=10)
 
 
-def _cfg(**overrides):
-    defaults = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
-    )
-    defaults.update(overrides)
-    return Config(**cast(dict[str, Any], defaults))
+class TestActionOn:
+    """Tests for action_on flow."""
+
+    def test_action_on_calls_features_enable(self, tmp_path, logger):
+        """action_on should call features_enable after marking active."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        runner = Runner(logger)
+        with mock_collect_features(features):
+            ret = action_on(cfg, runner, logger)
+        assert ret == 0
+        assert state.is_active
+        assert ff.enable_calls == [cfg.vrr_output_default]
+
+    def test_action_on_idempotent(self, tmp_path, logger):
+        """action_on when already active should return 0 without re-enabling."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        state.mark_active()
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        runner = Runner(logger)
+        with mock_collect_features(features):
+            ret = action_on(cfg, runner, logger)
+        assert ret == 0
+        assert ff.enable_calls == []
+
+    def test_action_on_skips_when_wrapper_active(self, tmp_path, logger):
+        """action_on when wrapper mode is active should skip."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        state.mark_wrapper(["/bin/test"])
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        runner = Runner(logger)
+        with mock_collect_features(features):
+            ret = action_on(cfg, runner, logger)
+        assert ret == 0
+        assert ff.enable_calls == []
+
+
+class TestActionOff:
+    """Tests for action_off flow."""
+
+    def test_action_off_calls_features_disable_and_clears(self, tmp_path, logger):
+        """action_off should call features_disable then clear state."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        state.mark_active()
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        runner = Runner(logger)
+        with mock_collect_features(features):
+            ret = action_off(cfg, runner, logger)
+        assert ret == 0
+        assert ff.disable_calls == [cfg.vrr_output_default]
+        assert state.mode == ""
+
+
+class TestActionStatus:
+    """Tests for action_status."""
+
+    def test_action_status_output(self, tmp_path, capsys):
+        """action_status should print state information."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        ret = action_status(cfg)
+        assert ret == 0
+        output = capsys.readouterr().out
+        assert "State:" in output
+        assert "Compositor:" in output
+
+
+class TestCleanupClosure:
+    """Tests for _build_cleanup_closure."""
+
+    def test_cleanup_idempotent(self, tmp_path, logger):
+        """Calling cleanup twice should only run once."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        cleanup = gamemode_actions._build_cleanup_closure(
+            features, "DP-1", logger, state
+        )
+        cleanup()
+        cleanup()
+        assert ff.disable_calls == ["DP-1"]
+
+    def test_cleanup_preserve_state(self, tmp_path, logger):
+        """Cleanup with preserve_state=True should not clear state."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        state.mark_active()
+        ff = FakeFeature("test")
+        features = [("test", ff)]
+        cleanup = gamemode_actions._build_cleanup_closure(
+            features, "DP-1", logger, state, preserve_state=True
+        )
+        cleanup()
+        assert state.is_active

@@ -25,12 +25,12 @@
           packages = with pkgs; [
             bashInteractive
             coreutils
+            findutils
             gawk
             git
             gnugrep
             gnused
             gnutar
-            findutils
             jq
             less
             prettier

@@ -1,9 +1,9 @@
 """Tests for configuration module."""
 
 import os
-from typing import Any, cast
 
 import pytest
+from conftest import _cfg
 
 from gamemode.config import (
     Config,
@@ -146,23 +146,41 @@ class TestLoadConfigFile:
         load_config_file(config_path)
         assert os.environ["TEST_SPACES"] == "spaced_value"
 
+    def test_systemd_run_args_default(self, monkeypatch):
+        """systemd_run_args should parse default args from empty env var."""
+        monkeypatch.setenv("SYSTEMD_RUN_ARGS", "")
+        cfg = Config()
+        assert "--user" in cfg.systemd_run_args
+        assert "--scope" in cfg.systemd_run_args
 
-def _cfg(**overrides):
-    defaults = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
-    )
-    defaults.update(overrides)
-    return Config(**cast(dict[str, Any], defaults))
+    def test_systemd_run_args_custom(self, monkeypatch):
+        """systemd_run_args should parse custom args from env var."""
+        monkeypatch.setenv("SYSTEMD_RUN_ARGS", "--custom --args")
+        cfg = Config()
+        assert cfg.systemd_run_args == ["--custom", "--args"]
+
+    def test_toggle_features_parsing(self, monkeypatch):
+        """toggle_features should parse comma-separated, case-insensitive set."""
+        monkeypatch.setenv("TOGGLE_FEATURES", "VRR,scx")
+        cfg = Config()
+        assert "vrr" in cfg.toggle_features
+        assert "scx" in cfg.toggle_features
+
+    def test_wrapper_features_parsing(self, monkeypatch):
+        """wrapper_features should parse comma-separated set."""
+        monkeypatch.setenv("WRAPPER_FEATURES", "steam,inhibit")
+        cfg = Config()
+        assert "steam" in cfg.wrapper_features
+        assert "inhibit" in cfg.wrapper_features
+
+    def test_enable_systemd_run_env(self, monkeypatch):
+        """enable_systemd_run should be controlled by ENABLE_SYSTEMD_RUN env var."""
+        monkeypatch.setenv("ENABLE_SYSTEMD_RUN", "false")
+        cfg = Config()
+        assert cfg.enable_systemd_run is False
+
+    def test_enable_systemd_run_default(self, monkeypatch):
+        """enable_systemd_run should default to True."""
+        monkeypatch.delenv("ENABLE_SYSTEMD_RUN", raising=False)
+        cfg = Config()
+        assert cfg.enable_systemd_run is True

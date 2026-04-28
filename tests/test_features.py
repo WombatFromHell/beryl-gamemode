@@ -1,18 +1,30 @@
 """Tests for feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit, wrappers."""
 
-import json
 import os
-from typing import Any, cast
 
 import pytest
+from conftest import (
+    FakeRunner,
+    _cfg,
+    _cp,
+    _dbus_uninhibit_cmd,
+    _inhibit_maps,
+    _resolve,
+    _vrr_maps,
+)
 
-from gamemode.config import Config
 from gamemode.features.audio_priority import AudioPriority
 from gamemode.features.power_profile import PowerProfile
 from gamemode.features.screen_inhibit import ScreenInhibit
 from gamemode.features.scx_scheduler import SCXScheduler
 from gamemode.features.vrr import VRR
-from gamemode.features.wrappers import steam_wrapper_factory
+from gamemode.features.wrappers import (
+    WRAPPER_FACTORIES,
+    SystemdRun,
+    WrapperChain,
+    inhibit_wrapper_factory,
+    steam_wrapper_factory,
+)
 from gamemode.runner import Runner
 
 
@@ -244,21 +256,19 @@ class TestAudioPriority:
         result = audio.enable("DP-1")
         assert result.skipped is True
 
-    def test_enable_sets_env(self, feature_builder):
+    def test_enable_sets_env(self, feature_builder, audio_env_cleanup):
         audio, _ = feature_builder(
             AudioPriority, enable_audio=True, audio_latency="120"
         )
         result = audio.enable("DP-1")
         assert result.changed is True
         assert os.environ.get("PULSE_LATENCY_MSEC") == "120"
-        os.environ.pop("PULSE_LATENCY_MSEC", None)
 
-    def test_enable_writes_env_file(self, feature_builder):
+    def test_enable_writes_env_file(self, feature_builder, audio_env_cleanup):
         audio, _ = feature_builder(AudioPriority, enable_audio=True, audio_latency="80")
         audio.enable("DP-1")
         content = audio._cfg.audio_env_file.read_text()
         assert "PULSE_LATENCY_MSEC=80" in content
-        os.environ.pop("PULSE_LATENCY_MSEC", None)
 
     def test_disable_clears_env(self, feature_builder):
         audio, _ = feature_builder(AudioPriority, enable_audio=True)
@@ -453,106 +463,121 @@ class TestSteamWrapperPath:
         assert wrapper(["mygame"]) == ["mygame"]
 
 
-# Helper functions (duplicated from old test for module independence)
-def _cfg(**overrides):
-    defaults = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
-    )
-    defaults.update(overrides)
-    return Config(**cast(dict[str, Any], defaults))
+class TestInhibitWrapperFactory:
+    def test_returns_none_when_disabled(self, tmp_path, logger):
+        """inhibit_wrapper_factory returns None when inhibit is disabled."""
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=False)
+        result = inhibit_wrapper_factory(cfg, Runner(logger), logger)
+        assert result is None
+
+    def test_returns_none_when_systemd_inhibit_missing(self, tmp_path, logger):
+        """inhibit_wrapper_factory returns None when systemd-inhibit is not found."""
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=True)
+        r = FakeRunner(logger)
+        result = inhibit_wrapper_factory(cfg, r, logger)
+        assert result is None
+
+    def test_returns_wrapper_when_enabled(self, tmp_path, logger):
+        """inhibit_wrapper_factory returns a wrapper when enabled and systemd-inhibit exists."""
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=True)
+        r = FakeRunner(logger)
+        r.when_resolved("systemd-inhibit", "/usr/bin/systemd-inhibit")
+        wrapper = inhibit_wrapper_factory(cfg, r, logger)
+        assert wrapper is not None
+        result = wrapper(["mygame"])
+        assert result[0] == "/usr/bin/systemd-inhibit"
+        assert "--what=idle:sleep" in result
 
 
-def _cp(stdout="", stderr="", rc=0):
-    import subprocess
+class TestSystemdRunWrapper:
+    def test_wrap_argv_disabled(self, tmp_path, logger):
+        """SystemdRun.wrap_argv returns argv unchanged when disabled."""
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_systemd_run=False)
+        r = Runner(logger)
+        sd = SystemdRun(cfg, r, logger)
+        result = sd.wrap_argv(["mygame"])
+        assert result == ["mygame"]
 
-    return subprocess.CompletedProcess([], returncode=rc, stdout=stdout, stderr=stderr)
+    def test_wrap_argv_systemd_run_missing(self, tmp_path, logger):
+        """SystemdRun.wrap_argv returns argv when systemd-run is not found."""
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_systemd_run=True)
+        r = FakeRunner(logger)
+        sd = SystemdRun(cfg, r, logger)
+        result = sd.wrap_argv(["mygame"])
+        assert result == ["mygame"]
 
+    def test_wrap_argv_success(self, tmp_path, logger):
+        """SystemdRun.wrap_argv wraps with systemd-run when available."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_systemd_run=True,
+            systemd_run_args=["--user", "--scope"],
+        )
+        r = FakeRunner(logger)
+        r.when_resolved("systemd-run", "/usr/bin/systemd-run")
+        sd = SystemdRun(cfg, r, logger)
+        result = sd.wrap_argv(["mygame"])
+        assert result[0] == "systemd-run"
+        assert "--user" in result
+        assert "mygame" in result
 
-def _resolve(cmd):
-    return {cmd: f"/usr/bin/{cmd}"}
-
-
-def _vrr_maps(vrr_supported=True, vrr_enabled=False, output="DP-1"):
-    niri_json = json.dumps(
-        {output: {"vrr_supported": vrr_supported, "vrr_enabled": vrr_enabled}}
-    )
-    resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
-    run_map = {("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json)}
-    pipe_map = {
-        ("jq", "-r", "--arg", "o", output, ".[$o].vrr_supported // true"): _cp(
-            stdout=str(vrr_supported).lower()
-        ),
-        (
-            "jq",
-            "-r",
-            "--arg",
-            "o",
-            output,
-            'if .[$o].vrr_enabled == true then "true" '
-            'elif .[$o].vrr_enabled == false then "false" '
-            'else "" end',
-        ): _cp(stdout=str(vrr_enabled).lower()),
-    }
-    return resolve_map, run_map, pipe_map
-
-
-def _inhibit_maps(
-    *,
-    dms_status="Idle inhibit is disabled",
-    dms_enable_rc=0,
-    screensaver_cookie="42",
-    screensaver_rc=0,
-    niri=True,
-):
-    dbus_path = "/usr/bin/dbus-send"
-    resolve_map = {"dms": "/usr/bin/dms" if niri else None, "dbus-send": dbus_path}
-    run_map = {
-        ("dms", "ipc", "call", "inhibit", "status"): _cp(stdout=dms_status),
-        ("dms", "ipc", "call", "inhibit", "enable"): _cp(rc=dms_enable_rc),
-        (
-            "dms",
-            "ipc",
-            "call",
-            "inhibit",
-            "reason",
-            "gamemode.py gaming session",
-        ): _cp(),
-        (
-            dbus_path,
-            "--session",
-            "--dest=org.freedesktop.ScreenSaver",
-            "--type=method_call",
-            "--print-reply=literal",
-            "/ScreenSaver",
-            "org.freedesktop.ScreenSaver.Inhibit",
-            "string:gamemode.py",
-            "string:gamemode.py gaming session",
-        ): _cp(stdout=screensaver_cookie, rc=screensaver_rc),
-    }
-    return resolve_map, run_map, dbus_path
+    def test_wrap_argv_empty_args(self, tmp_path, logger):
+        """SystemdRun.wrap_argv returns argv when systemd_run_args is empty."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_systemd_run=True,
+            systemd_run_args=[],
+        )
+        r = FakeRunner(logger)
+        r.when_resolved("systemd-run", "/usr/bin/systemd-run")
+        sd = SystemdRun(cfg, r, logger)
+        result = sd.wrap_argv(["mygame"])
+        assert result == ["mygame"]
 
 
-def _dbus_uninhibit_cmd(dbus_path, cookie):
-    return (
-        dbus_path,
-        "--session",
-        "--dest=org.freedesktop.ScreenSaver",
-        "--type=method_call",
-        "--print-reply=literal",
-        "/ScreenSaver",
-        "org.freedesktop.ScreenSaver.UnInhibit",
-        f"uint32:{cookie}",
-    )
+class TestWrapperChain:
+    def test_add_and_apply(self, logger):
+        """WrapperChain.add and apply should chain wrappers."""
+        chain = WrapperChain()
+        chain.add(lambda argv: ["w1", *argv])
+        chain.add(lambda argv: ["w2", *argv])
+        result = chain.apply(["mygame"])
+        assert result == ["w2", "w1", "mygame"]
+
+    def test_add_none_ignored(self, logger):
+        """WrapperChain.add should ignore None wrappers."""
+        chain = WrapperChain()
+        chain.add(None)
+        chain.add(lambda argv: ["w1", *argv])
+        result = chain.apply(["mygame"])
+        assert result == ["w1", "mygame"]
+
+    def test_add_factory(self, tmp_path, logger):
+        """WrapperChain.add_factory should call factory and add non-None wrappers."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_steam=True,
+            steam_script=str(tmp_path / "steam.sh"),
+        )
+        script = tmp_path / "steam.sh"
+        script.write_text("#!/bin/sh\n")
+        script.chmod(0o755)
+        r = Runner(logger)
+        chain = WrapperChain()
+        chain.add_factory(steam_wrapper_factory, cfg, r, logger)
+        result = chain.apply(["mygame"])
+        assert str(script) in result
+
+    def test_apply_empty_chain(self):
+        """WrapperChain.apply with no wrappers should return argv unchanged."""
+        chain = WrapperChain()
+        result = chain.apply(["mygame"])
+        assert result == ["mygame"]
+
+
+class TestWrapperFactories:
+    def test_registry_contains_expected_keys(self):
+        """WRAPPER_FACTORIES should contain steam, inhibit, and systemd_run."""
+        assert "steam" in WRAPPER_FACTORIES
+        assert "inhibit" in WRAPPER_FACTORIES
+        assert "systemd_run" in WRAPPER_FACTORIES

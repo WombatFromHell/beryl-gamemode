@@ -17,11 +17,17 @@ class ScreenInhibit(_BaseFeature):
     _DBUS_PATH = "/ScreenSaver"
     _DBUS_IFACE = "org.freedesktop.ScreenSaver"
 
+    _feature_name = "Screen inhibit"
+
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._dms = runner.make_checked_runner(self._DMS_CMD, self._DMS_FEATURE)
+        self._dms = self.make_checked_cmd(self._DMS_CMD, self._DMS_FEATURE)
         self._dbus_send: str | None = runner.resolve("dbus-send")
         self._screensaver_cookie: int | None = None
+
+    @property
+    def _feature_enabled(self) -> bool:
+        return self._cfg.enable_inhibit
 
     def _dms_inhibit_enabled(self) -> bool:
         result = self._dms.run_or_none(
@@ -30,8 +36,8 @@ class ScreenInhibit(_BaseFeature):
         return result is not None and "Idle inhibit is disabled" not in result.stdout
 
     def _dms_run(self, cmd: list[str], desc: str) -> bool:
-        r = self._dms.run_or_none([self._DMS_CMD, "ipc", "call", "inhibit", *cmd])
-        if r is None or r.returncode != 0:
+        ok = self._dms.run_ok([self._DMS_CMD, "ipc", "call", "inhibit", *cmd])
+        if not ok:
             self._log.error("Failed to %s", desc)
             return False
         return True
@@ -115,23 +121,22 @@ class ScreenInhibit(_BaseFeature):
         else:
             self._log.debug("ScreenSaver cookie released: %d", self._screensaver_cookie)
 
-    def _set_state(self, desired: str) -> FeatureResult:
-        return self._guarded(
-            self._cfg.enable_inhibit, "Screen inhibit", lambda: self._set(desired)
-        )
-
-    def _set(self, desired: str) -> FeatureResult:
-        if desired == "on":
-            return self._enable_inhibition()
-        return self._disable_inhibition()
-
-    def _enable_inhibition(self) -> FeatureResult:
+    def _do_enable(self, output: str) -> FeatureResult:
         results: list[str] = []
         self._try_dms_inhibit(results)
         self._try_screensaver_inhibit(results)
         if not results:
             return FeatureResult.error("all inhibit mechanisms failed")
         return FeatureResult.did_change("; ".join(results))
+
+    def _do_disable(self, output: str) -> FeatureResult:
+        results: list[str] = []
+        if compositor_is_niri():
+            self._dms_inhibit_disable()
+            results.append("DMS inhibit disabled")
+        self._screensaver_inhibit_disable()
+        results.append("ScreenSaver cookie released")
+        return FeatureResult(changed=True, detail="; ".join(results))
 
     def _try_dms_inhibit(self, results: list[str]) -> None:
         if not compositor_is_niri():
@@ -144,18 +149,3 @@ class ScreenInhibit(_BaseFeature):
     def _try_screensaver_inhibit(self, results: list[str]) -> None:
         if self._screensaver_inhibit_enable():
             results.append("ScreenSaver cookie acquired")
-
-    def _disable_inhibition(self) -> FeatureResult:
-        results: list[str] = []
-        if compositor_is_niri():
-            self._dms_inhibit_disable()
-            results.append("DMS inhibit disabled")
-        self._screensaver_inhibit_disable()
-        results.append("ScreenSaver cookie released")
-        return FeatureResult(changed=True, detail="; ".join(results))
-
-    def enable(self, _output: str) -> FeatureResult:
-        return self._set_state("on")
-
-    def disable(self, _output: str) -> FeatureResult:
-        return self._set_state("off")

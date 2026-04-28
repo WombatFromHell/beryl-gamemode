@@ -2,6 +2,10 @@
 
 import logging
 
+import pytest
+
+from gamemode.runner import Runner
+
 
 class TestRunner:
     def test_resolve_existing(self, runner):
@@ -26,6 +30,17 @@ class TestRunner:
         assert result.returncode == 0
         assert result.stdout.strip() == "hello"
 
+    def test_run_file_not_found(self, runner):
+        """Runner.run should raise FileNotFoundError for missing commands."""
+        with pytest.raises(FileNotFoundError):
+            runner.run(["/nonexistent/command"], capture_output=True, text=True)
+
+    def test_pipe(self, logger):
+        """Runner.pipe should pass input_data to stdin."""
+        r = Runner(logger)
+        result = r.pipe(["cat"], input_data="hello")
+        assert result.stdout.strip() == "hello"
+
 
 class TestCheckedCommandRunner:
     def test_run_or_none_when_available(self, logger, fake_runner):
@@ -42,3 +57,14 @@ class TestCheckedCommandRunner:
         assert checked.is_available is False
         result = checked.run_or_none(["no_such_cmd"])
         assert result is None
+
+    def test_run_or_none_error_logging(self, logger, fake_runner, caplog):
+        """When command returns non-zero, debug log should be emitted."""
+        fake_runner.when_resolved("bad_cmd", "/usr/bin/bad_cmd")
+        fake_runner.when_run(("bad_cmd", "fail"), rc=1, stderr="error")
+        caplog.set_level(logging.DEBUG)
+        checked = fake_runner.make_checked_runner("bad_cmd", "test_feature")
+        result = checked.run_or_none(["bad_cmd", "fail"])
+        assert result is not None
+        assert result.returncode == 1
+        assert any("returned 1" in r.message for r in caplog.records)

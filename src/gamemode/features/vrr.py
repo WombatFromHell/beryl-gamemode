@@ -17,9 +17,15 @@ class VRR(_BaseFeature):
     _JQ_VRR_SUPPORTED = ".[$o].vrr_supported // true"
     _JQ_VRR_ENABLED = 'if .[$o].vrr_enabled == true then "true" elif .[$o].vrr_enabled == false then "false" else "" end'
 
+    _feature_name = "VRR"
+
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._niri_cmd = runner.make_checked_runner("niri", "VRR")
+        self._niri_cmd = self.make_checked_cmd("niri", "VRR")
+
+    @property
+    def _feature_enabled(self) -> bool:
+        return self._cfg.enable_vrr
 
     def _build_jq_argv(self, jq_expr: str, jq_args: dict[str, str] | None) -> list[str]:
         argv = ["jq", "-r"]
@@ -53,15 +59,22 @@ class VRR(_BaseFeature):
     def _set(self, output: str, state: str) -> bool:
         if not self._niri_cmd.is_available:
             return False
-        result = self._niri_cmd.run_or_none(
-            ["niri", "msg", "output", output, "vrr", state]
-        )
-        return result is not None and result.returncode == 0
+        return self._niri_cmd.run_ok(["niri", "msg", "output", output, "vrr", state])
 
     def _check_niri_running(self) -> bool:
         return compositor_is_niri()
 
-    def _check_vrr_toggle(self, output: str, desired: str) -> FeatureResult:
+    def _do_enable(self, output: str) -> FeatureResult:
+        if not self._check_niri_running():
+            return FeatureResult.skip("niri not running")
+        return self._vrr_toggle(output, "on")
+
+    def _do_disable(self, output: str) -> FeatureResult:
+        if not self._check_niri_running():
+            return FeatureResult.skip("niri not running")
+        return self._vrr_toggle(output, "off")
+
+    def _vrr_toggle(self, output: str, desired: str) -> FeatureResult:
         current = self._current(output)
         if current == "":
             return FeatureResult.skip(f"output '{output}' not found")
@@ -69,24 +82,7 @@ class VRR(_BaseFeature):
             return FeatureResult.skip(f"output '{output}' not VRR-capable")
         if current == desired:
             return FeatureResult.noop()
-        return self._do_vrr_toggle(output, desired, current)
-
-    def _do_vrr_toggle(self, output: str, desired: str, current: str) -> FeatureResult:
         ok = self._set(output, desired)
         if ok:
             return FeatureResult.did_change(f"{current} → {desired} on {output}")
         return FeatureResult.error("toggle failed")
-
-    def _toggle(self, output: str, desired: str) -> FeatureResult:
-        gate = self._gate(self._cfg.enable_vrr, "VRR")
-        if gate is not None:
-            return gate
-        if not self._check_niri_running():
-            return FeatureResult.skip("niri not running")
-        return self._check_vrr_toggle(output, desired)
-
-    def enable(self, output: str) -> FeatureResult:
-        return self._toggle(output, "on")
-
-    def disable(self, output: str) -> FeatureResult:
-        return self._toggle(output, "off")

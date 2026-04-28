@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-import textwrap
 
 from gamemode.__version__ import _get_version
 from gamemode.actions import action_off, action_on, action_status, action_wrapper
@@ -13,8 +12,14 @@ from gamemode.dependencies import validate_deps
 from gamemode.logging_setup import setup_logging
 from gamemode.runner import Runner
 
-USAGE = textwrap.dedent("""\
-Usage: gamemode.py [MODE] [COMMAND...]
+
+def _invocation_name() -> str:
+    """Return the command the user typed to invoke this tool."""
+    return os.path.basename(sys.argv[0])
+
+
+USAGE_TEMPLATE = """\
+Usage: {cmd} [MODE] [COMMAND...]
 
 Gamemode {_version_} — Performance toggle for gaming sessions.
 
@@ -40,13 +45,18 @@ ENVIRONMENT:
   XDG_RUNTIME_DIR    State dir and log file location (default: /tmp)
 
 EXAMPLES:
-  python3 gamemode.py on                          # Toggle on
-  python3 gamemode.py off                         # Toggle off
-  python3 gamemode.py -- steam                    # Wrapper: launch steam
-  python3 gamemode.py -- ~/Games/hero/main.sh     # Wrapper: run a game directly
-  ENABLE_SYSTEMD_RUN=false python3 gamemode.py -- steam  # Disable systemd-run wrapper
-  TOGGLE_FEATURES=vrr,scx python3 gamemode.py on  # Only enable VRR & SCX
-""").replace("{_version_}", _get_version())
+  {cmd} on                          # Toggle on
+  {cmd} off                         # Toggle off
+  {cmd} -- steam                    # Wrapper: launch steam
+  {cmd} -- ~/Games/hero/main.sh     # Wrapper: run a game directly
+  ENABLE_SYSTEMD_RUN=false {cmd} -- steam  # Disable systemd-run wrapper
+  TOGGLE_FEATURES=vrr,scx {cmd} on  # Only enable VRR & SCX
+"""
+
+
+def _get_usage() -> str:
+    cmd = _invocation_name()
+    return USAGE_TEMPLATE.format(cmd=cmd, _version_=_get_version())
 
 
 VERSION = "Gamemode " + _get_version()
@@ -56,10 +66,10 @@ def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
-        print(USAGE, end="")
+        print(_get_usage(), end="")
         return None, []
     if argv[0] in ("-h", "--help"):
-        print(USAGE, end="")
+        print(_get_usage(), end="")
         return None, []
     mode = argv[0]
     if mode in ("on", "off", "status"):
@@ -68,7 +78,7 @@ def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
         command = argv[1:]
         if not command:
             print("Error: wrapper mode requires a command after '--'", file=sys.stderr)
-            print(USAGE, end="", file=sys.stderr)
+            print(_get_usage(), end="", file=sys.stderr)
             return None, []
         return "wrapper", command
     return "wrapper", argv
@@ -78,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     if not argv or argv[0] in ("-h", "--help"):
-        print(USAGE, end="")
+        print(_get_usage(), end="")
         return 0
     if argv[0] in ("-V", "--version"):
         print(VERSION)

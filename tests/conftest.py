@@ -5,13 +5,52 @@ import json
 import logging
 import os
 import subprocess
+import time
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
+from gamemode import actions as gamemode_actions
 from gamemode.config import Config
+from gamemode.feature import Feature, FeatureResult
 from gamemode.runner import Runner
 from gamemode.state import StateManager
+
+
+class FakeFeature(Feature):
+    """Trivial feature that records enable/disable calls.
+
+    Usage::
+
+        ff = FakeFeature("my_feature")
+        ff = FakeFeature("my_feature", enable_result=FeatureResult.noop())
+    """
+
+    def __init__(
+        self,
+        name: str,
+        enable_result: FeatureResult | None = None,
+        disable_result: FeatureResult | None = None,
+    ):
+        self.name = name
+        self.enable_calls: list[str] = []
+        self.disable_calls: list[str] = []
+        self.enable_result = enable_result or FeatureResult.did_change(
+            f"{name} enabled"
+        )
+        self.disable_result = disable_result or FeatureResult.did_change(
+            f"{name} disabled"
+        )
+
+    def enable(self, _output: str) -> FeatureResult:
+        self.enable_calls.append(_output)
+        return self.enable_result
+
+    def disable(self, _output: str) -> FeatureResult:
+        self.disable_calls.append(_output)
+        return self.disable_result
+
 
 # ============================================================================
 # Test support helpers
@@ -38,6 +77,51 @@ def _cfg(**overrides: Any) -> Config:
     )
     defaults.update(overrides)
     return Config(**defaults)
+
+
+def spawn_child(tmp_path, script_body, script_name="child.py", ready_name="ready"):
+    """Write a script, spawn it, wait for the ready file, return the Popen."""
+    script = tmp_path / script_name
+    script.write_text(script_body)
+    ready_path = tmp_path / ready_name
+    proc = subprocess.Popen(
+        ["python3", str(script)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    for _ in range(50):
+        if ready_path.exists():
+            return proc
+        time.sleep(0.1)
+    proc.kill()
+    proc.wait()
+    pytest.fail(f"Child {script_name} did not become ready")
+
+
+def mock_collect_features(features):
+    """Context manager that patches collect_features to return the given features."""
+    return patch.object(gamemode_actions, "collect_features", return_value=features)
+
+
+def _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit):
+    """Build a FakeRunner with dependency resolutions for the given feature toggles."""
+    r = FakeRunner(logger)
+    r.when_resolved("scxctl", "/usr/bin/scxctl" if enable_scx else None)
+    r.when_resolved("jq", "/usr/bin/jq" if enable_vrr else None)
+    r.when_resolved("tuned-adm", "/usr/bin/tuned-adm" if enable_tuned else None)
+    r.when_resolved(
+        "systemd-inhibit", "/usr/bin/systemd-inhibit" if enable_inhibit else None
+    )
+    r.when_resolved("dbus-send", "/usr/bin/dbus-send" if enable_inhibit else None)
+    return r
+
+
+def _state(cfg):
+    """Return an initialized StateManager for the given config."""
+    sm = StateManager(cfg)
+    sm.init()
+    return sm
 
 
 def _cp(stdout: str = "", stderr: str = "", rc: int = 0):
@@ -236,6 +320,11 @@ def niri_session(monkeypatch):
     monkeypatch.setenv("XDG_SESSION_DESKTOP", "niri")
     monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
     monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda: True)
+    # Also patch in feature modules that import compositor_is_niri at module level
+    monkeypatch.setattr("gamemode.features.vrr.compositor_is_niri", lambda: True)
+    monkeypatch.setattr(
+        "gamemode.features.screen_inhibit.compositor_is_niri", lambda: True
+    )
 
 
 @pytest.fixture()
@@ -281,3 +370,21 @@ def held_lock(tmp_path_cfg):
     yield fd
     fcntl.flock(fd, fcntl.LOCK_UN)
     os.close(fd)
+
+
+@pytest.fixture()
+def disabled_features_env(monkeypatch):
+    """Disable all feature env vars so Config() uses defaults."""
+    monkeypatch.setenv("ENABLE_SCX_SCHEDULER", "false")
+    monkeypatch.setenv("ENABLE_VRR", "false")
+    monkeypatch.setenv("ENABLE_PERFORMANCE_MODE", "false")
+    monkeypatch.setenv("ENABLE_SCREEN_KEEP_AWAKE", "false")
+    monkeypatch.setenv("ENABLE_AUDIO_PRIORITY_BOOST", "false")
+    monkeypatch.setenv("ENABLE_STEAM_ENV", "false")
+    monkeypatch.setenv("ENABLE_SYSTEMD_RUN", "false")
+
+
+@pytest.fixture()
+def audio_env_cleanup(monkeypatch):
+    """Reset PULSE_LATENCY_MSEC after each test."""
+    monkeypatch.delenv("PULSE_LATENCY_MSEC", raising=False)

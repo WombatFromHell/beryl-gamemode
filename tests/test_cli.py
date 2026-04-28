@@ -2,7 +2,7 @@
 
 import pytest
 
-from gamemode.cli import cli_parse
+from gamemode.cli import cli_parse, main
 
 
 class TestCliParser:
@@ -29,3 +29,27 @@ class TestCliParser:
         mode, cmd = cli_parse(["--"])
         assert mode is None
         assert cmd == []
+
+
+class TestMain:
+    def test_main_version(self, disabled_features_env):
+        """main with -V/--version should print version and return 0."""
+        ret = main(["-V"])
+        assert ret == 0
+
+    def test_main_version_long(self, disabled_features_env):
+        """main with --version should print version and return 0."""
+        ret = main(["--version"])
+        assert ret == 0
+
+    def test_main_unknown_subcommand(self, disabled_features_env, capsys):
+        """main with unknown subcommand should return 1."""
+        ret = main(["unknown"])
+        assert ret == 1
+
+    def test_main_empty_argv_returns_usage(self, disabled_features_env, capsys):
+        """main with empty argv should print usage and return 0."""
+        ret = main([])
+        assert ret == 0
+        output = capsys.readouterr().out
+        assert "Usage:" in output

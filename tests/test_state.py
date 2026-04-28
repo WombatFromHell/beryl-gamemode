@@ -1,13 +1,9 @@
 """Tests for state management module."""
 
 import os
-import subprocess
-import time
-from typing import Any, cast
 
-import pytest
+from conftest import _cfg, spawn_child
 
-from gamemode.config import Config
 from gamemode.state import StateManager
 
 
@@ -77,8 +73,9 @@ class TestStateManager:
         state = StateManager(cfg)
         state.init()
         ready_file = tmp_path / "lock_grabber_ready"
-        lock_grabber = tmp_path / "lock_grabber.py"
-        lock_grabber.write_text(f"""
+        proc = spawn_child(
+            tmp_path,
+            f"""
 import sys, os, fcntl, time
 lock_file = {str(cfg.lock_file)!r}
 ready_file = {str(ready_file)!r}
@@ -87,21 +84,10 @@ fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 with open(ready_file, "w") as f:
     f.write("ready")
 time.sleep(60)
-""")
-        proc = subprocess.Popen(
-            ["python3", str(lock_grabber)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+""",
+            script_name="lock_grabber.py",
+            ready_name="lock_grabber_ready",
         )
-        for _ in range(50):
-            if ready_file.exists():
-                break
-            time.sleep(0.1)
-        else:
-            proc.kill()
-            proc.wait()
-            pytest.fail("Lock grabber never grabbed the lock")
         proc.kill()
         proc.wait()
         fd = os.open(str(cfg.lock_file), os.O_CREAT | os.O_WRONLY)
@@ -112,23 +98,24 @@ time.sleep(60)
             os.close(fd)
         assert acquired is True
 
+    def test_pid_alive_real_pid(self):
+        """pid_alive should return True for a living PID."""
+        import os
 
-def _cfg(**overrides):
-    defaults = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
-    )
-    defaults.update(overrides)
-    return Config(**cast(dict[str, Any], defaults))
+        assert StateManager._pid_alive(os.getpid()) is True
+
+    def test_cmd_with_data(self, state_manager):
+        """cmd() should return the stored command when present."""
+        state_manager.mark_wrapper(["/bin/test", "--arg"])
+        assert state_manager.cmd() == ["/bin/test", "--arg"]
+
+    def test_clear_glob_cleanup(self, tmp_path_cfg):
+        """clear() should remove lock_* files in the state directory."""
+        sm = StateManager(tmp_path_cfg)
+        sm.init()
+        sm.mark_wrapper()
+        # Create a lock_* file
+        lock_file = tmp_path_cfg.state_dir / "lock_test"
+        lock_file.write_text("test")
+        sm.clear()
+        assert not lock_file.exists()

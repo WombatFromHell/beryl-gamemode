@@ -87,3 +87,8 @@ class CheckedCommandRunner:
                 result.returncode,
             )
         return result
+
+    def run_ok(self, args: list[str], **kwargs: Any) -> bool:
+        """Return True if the command ran successfully (returncode == 0)."""
+        result = self.run_or_none(args, **kwargs)
+        return result is not None and result.returncode == 0

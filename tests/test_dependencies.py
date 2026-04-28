@@ -1,12 +1,11 @@
 """Tests for dependency validation module."""
 
-from typing import Any, cast
+import logging
 
 import pytest
+from conftest import FakeRunner, _cfg, _dep_runner
 
-from gamemode.config import Config
 from gamemode.dependencies import validate_deps
-from gamemode.runner import Runner
 
 
 class TestValidateDeps:
@@ -33,14 +32,7 @@ class TestValidateDeps:
             enable_tuned=enable_tuned,
             enable_inhibit=enable_inhibit,
         )
-        r = _FakeRunner(logger)
-        r.when_resolved("scxctl", "/usr/bin/scxctl" if enable_scx else None)
-        r.when_resolved("jq", "/usr/bin/jq" if enable_vrr else None)
-        r.when_resolved("tuned-adm", "/usr/bin/tuned-adm" if enable_tuned else None)
-        r.when_resolved(
-            "systemd-inhibit", "/usr/bin/systemd-inhibit" if enable_inhibit else None
-        )
-        r.when_resolved("dbus-send", "/usr/bin/dbus-send" if enable_inhibit else None)
+        r = _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit)
         ok = validate_deps(cfg, r, logger)
         if enable_scx or enable_vrr or enable_tuned or enable_inhibit:
             all_present = all(
@@ -56,36 +48,70 @@ class TestValidateDeps:
         else:
             assert ok is True
 
-
-def _cfg(**overrides):
-    defaults = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
+    @pytest.mark.parametrize(
+        "enable_scx,enable_vrr,enable_tuned,enable_inhibit",
+        [
+            (True, False, False, False),
+            (False, True, False, False),
+            (False, False, True, False),
+            (False, False, False, True),
+        ],
     )
-    defaults.update(overrides)
-    return Config(**cast(dict[str, Any], defaults))
+    def test_single_feature_enabled_all_deps_present(
+        self,
+        tmp_path,
+        logger,
+        enable_scx,
+        enable_vrr,
+        enable_tuned,
+        enable_inhibit,
+    ):
+        """Each feature individually enabled with all deps present returns True."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_scx=enable_scx,
+            enable_vrr=enable_vrr,
+            enable_tuned=enable_tuned,
+            enable_inhibit=enable_inhibit,
+        )
+        r = _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is True
 
+    def test_single_feature_enabled_missing_dep(self, tmp_path, logger):
+        """When a single feature is enabled but its dep is missing, returns False."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_scx=True,
+        )
+        r = FakeRunner(logger)
+        r.when_resolved("scxctl", None)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is False
 
-class _FakeRunner(Runner):
-    def __init__(self, log):
-        super().__init__(log)
-        self._resolve_map: dict[str, str | None] = {}
+    def test_missing_dep_logs_error(self, tmp_path, logger, caplog):
+        """Missing dependency should log an error with the missing commands."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_scx=True,
+            enable_vrr=True,
+        )
+        r = FakeRunner(logger)
+        r.when_resolved("scxctl", None)
+        r.when_resolved("jq", None)
+        caplog.set_level(logging.ERROR)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is False
+        assert "scxctl" in caplog.text
+        assert "jq" in caplog.text
 
-    def when_resolved(self, cmd, path=None):
-        self._resolve_map[cmd] = path
-        return self
-
-    def resolve(self, cmd):
-        return self._resolve_map.get(cmd)
+    def test_audio_steam_no_dep_checks(self, tmp_path, logger):
+        """enable_audio and enable_steam have no dep checks and should not trigger any."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_audio=True,
+            enable_steam=True,
+        )
+        r = FakeRunner(logger)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is True
