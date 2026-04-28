@@ -39,13 +39,13 @@ graph TB
     test_orch -.-> gamemode_orch["gamemode.collect_features(), features_enable,<br/>features_disable, _apply_features"]
     test_logging -.-> gamemode_log["gamemode.setup_logging()"]
     test_state -.-> gamemode_state["gamemode.StateManager"]
-    test_features -.-> gamemode_features["gamemode.features modules:<br/>vrr, power_profile, scx_scheduler,<br/>audio_priority, screen_inhibit,<br/>wrappers"]
-    test_actions -.-> gamemode_actions["gamemode.actions modules:<br/>action_on, action_off, action_status,<br/>action_wrapper, _watch_parent,<br/>_build_cleanup_closure"]
+    test_features -.-> gamemode_features["gamemode.features modules&#58;<br/>vrr, power_profile, scx_scheduler,<br/>audio_priority, screen_inhibit,<br/>wrappers"]
+    test_actions -.-> gamemode_actions["gamemode.actions modules&#58;<br/>action_on, action_off, action_status,<br/>action_wrapper, _watch_parent,<br/>_build_cleanup_closure"]
 
-    test_features -. test_features_helper["shared helpers: _cfg, _cp, _resolve,<br/>_vrr_maps, _inhibit_maps, _dbus_uninhibit_cmd"]
-    test_deps -. test_deps_helper["_dep_runner for FakeRunner setup"]
-    test_actions -. test_actions_helper["spawn_child for child processes,<br/>mock_collect_features, _state"]
-    test_state -. test_state_helper["spawn_child for subprocess lock release test"]
+    test_features -.-> test_features_helper["shared helpers&#58; _cfg, _cp, _resolve,<br/>_vrr_maps, _inhibit_maps, _dbus_uninhibit_cmd"]
+    test_deps -.-> test_deps_helper["_dep_runner for FakeRunner setup"]
+    test_actions -.-> test_actions_helper["spawn_child for child processes,<br/>mock_collect_features, _state"]
+    test_state -.-> test_state_helper["spawn_child for subprocess lock release test"]
 
     style conftest fill:#f9f,stroke:#333
     style test_features fill:#9f9,stroke:#333
@@ -259,8 +259,8 @@ Shows how tests exercise the runtime paths — which test classes cover which ex
 ```mermaid
 graph TD
     subgraph toggle["Toggle Mode Paths"]
-        A["test_actions::TestActionOn"] --> B[action_on]
-        C["test_actions::TestActionOff"] --> D[action_off]
+        A["test_actions&#58;&#58;TestActionOn"] --> B[action_on]
+        C["test_actions&#58;&#58;TestActionOff"] --> D[action_off]
         B --> E[_prepare_action]
         D --> E
         E --> F[collect_features]
@@ -268,26 +268,26 @@ graph TD
     end
 
     subgraph wrapper["Wrapper Mode Paths"]
-        H["test_actions::TestActionWrapper"] --> I[action_wrapper]
+        H["test_actions&#58;&#58;TestActionWrapper"] --> I[action_wrapper]
         I --> J[_watch_parent]
-        I --> K[state.locked]
+        I --> K["state.locked"]
         I --> L[WrapperChain]
         I --> M[_run_child]
         I --> N[_build_cleanup_closure]
     end
 
     subgraph feature_tests["Feature Unit Paths"]
-        O["test_features::TestVRR"] --> P[VRR.enable / disable]
-        Q["test_features::TestPowerProfile"] --> R[PowerProfile.enable / disable]
-        S["test_features::TestSCXScheduler"] --> T[SCXScheduler.enable / disable]
-        U["test_features::TestAudioPriority"] --> V[AudioPriority.enable / disable]
-        W["test_features::TestScreenInhibit"] --> X[ScreenInhibit.enable / disable]
+        O["test_features&#58;&#58;TestVRR"] --> P["VRR.enable / disable"]
+        Q["test_features&#58;&#58;TestPowerProfile"] --> R["PowerProfile.enable / disable"]
+        S["test_features&#58;&#58;TestSCXScheduler"] --> T["SCXScheduler.enable / disable"]
+        U["test_features&#58;&#58;TestAudioPriority"] --> V["AudioPriority.enable / disable"]
+        W["test_features&#58;&#58;TestScreenInhibit"] --> X["ScreenInhibit.enable / disable"]
     end
 
     subgraph infra["Infrastructure Paths"]
-        Y["test_state::TestStateManager"] --> Z[StateManager CRUD / lock]
-        AA["test_runner::TestRunner"] --> BB[Runner.run / capture / pipe]
-        CC["test_orchestration::TestFeatureOrchestration"] --> DD[collect_features / features_enable / disable]
+        Y["test_state&#58;&#58;TestStateManager"] --> Z[StateManager CRUD / lock]
+        AA["test_runner&#58;&#58;TestRunner"] --> BB["Runner.run / capture / pipe"]
+        CC["test_orchestration&#58;&#58;TestFeatureOrchestration"] --> DD[collect_features / features_enable / disable]
     end
 
     style toggle fill:#9f9,stroke:#333

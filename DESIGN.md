@@ -187,7 +187,7 @@ graph LR
 
 ```mermaid
 graph LR
-    A[cli.main()] --> B[load_config_file]
+    A["cli.main()"] --> B[load_config_file]
     B --> C[Config]
     A --> D[setup_logging]
     A --> E[cli_parse]
@@ -205,18 +205,18 @@ graph LR
 graph TD
     A[action_on / action_off] --> B[_prepare_action]
     B --> C[output_resolve]
-    B --> D[StateManager.init]
+    B --> D["StateManager.init"]
     B --> E[collect_features]
-    E --> F[list[Feature]]
+    E --> F["featureList[Feature]"]
     A --> G{state check}
     G -->|already active| H[return 0 idempotent]
     G -->|wrapper active| H
-    G -->|fresh| I[state.mark_active]
+    G -->|fresh| I["state.mark_active"]
     I --> J[features_enable / features_disable]
-    J --> K[Feature.enable / disable]
-    K --> L[Runner.run / capture / pipe]
-    L --> M[subprocess.run]
-    A --> N[state.clear]
+    J --> K["Feature.enable / disable"]
+    K --> L["Runner.run / capture / pipe"]
+    L --> M["subprocess.run"]
+    A --> N["state.clear"]
 ```
 
 ### Wrapper Mode
@@ -224,38 +224,38 @@ graph TD
 ```mermaid
 graph TD
     A[action_wrapper] --> B[output_resolve]
-    A --> C[StateManager.init]
+    A --> C["StateManager.init"]
     A --> D[_watch_parent<br/>prctl PR_SET_PDEATHSIG]
-    A --> E{state.locked}
+    A --> E{"state.locked"}
     E -->|lock held| F[skip — another wrapper active]
     E -->|acquired| G{already active?}
     G -->|yes| H[skip features — apply wrappers only]
-    G -->|no| I[state.mark_wrapper]
+    G -->|no| I["state.mark_wrapper"]
     I --> J[collect_features]
     J --> K[features_enable]
-    K --> L[Feature.enable]
+    K --> L["Feature.enable"]
     H --> M[build WrapperChain]
     L --> M
     M --> N[WRAPPER_FACTORIES<br/>steam, inhibit, systemd_run]
     N --> O[_run_child]
-    O --> P[subprocess.Popen]
+    O --> P["subprocess.Popen"]
     O --> Q[_signal_guard<br/>SIGTERM/SIGINT/SIGHUP]
-    Q --> R[child.wait]
+    Q --> R["child.wait"]
     R --> S[cleanup closure]
     S --> T[features_disable]
-    T --> U[state.clear if preserve_state=False]
+    T --> U["state.clear if preserve_state=False"]
 ```
 
 ### Status Mode
 
 ```mermaid
 graph LR
-    A[action_status] --> B[StateManager.init]
+    A[action_status] --> B["StateManager.init"]
     B --> C[_build_status_lines]
     C --> D[compositor_is_niri]
     C --> E[session_is_kde]
     C --> F[output_resolve]
-    C --> G[state.mode / pid / cmd]
+    C --> G["state.mode / pid / cmd"]
     D --> H[print diagnostics]
     E --> H
     F --> H
