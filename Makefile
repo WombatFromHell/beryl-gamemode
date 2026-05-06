@@ -9,9 +9,7 @@ CHECKSUM = $(BUILD_DIR)/$(ARTIFACT).sha256sum
 VERSION_FILE = $(SRC_DIR)/gamemode/__version__.py
 
 # Fixed epoch for reproducible builds:
-# Default to Jan 1, 1980 00:00:00 UTC (315532800) if not set
-SOURCE_DATE_EPOCH ?= 315532800
-export SOURCE_DATE_EPOCH
+SOURCE_DATE_EPOCH ?= 1
 
 # Extract version from pyproject.toml
 VERSION := $(shell grep '^version = ' pyproject.toml | cut -d'"' -f2)
@@ -26,9 +24,19 @@ clean:
 	.pytest_cache \
 	.ruff_cache \
 	.direnv \
+	.pi \
+	result* \
 	.coverage
 
-configure:
+build-nix: clean
+	@echo "Building $(ARTIFACT) via Nix (version $(VERSION))"
+	mkdir -p $(BUILD_DIR)
+	nix build . --out-link ./$(OUT)
+	cd $(BUILD_DIR) && sha256sum $(ARTIFACT) > $(ARTIFACT).sha256sum
+	@echo "Built: $(OUT)"
+	@echo "SHA256: $$(cat $(OUT).sha256sum | cut -d' ' -f1)"
+
+configure: clean
 	uv venv --clear
 	uv sync --frozen
 
@@ -115,9 +123,11 @@ radon: radon-cc radon-mi
 
 quality: lint format
 
-ci: configure test quality build
+ci: configure test lint build
+
+ci-nix: lint test build-nix
 
 all: build install
 
-.PHONY: build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci
-.SILENT: build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci
+.PHONY: build-nix build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci ci-nix
+.SILENT: build-nix build install test lint prettier format radon-cc radon-mi radon quality clean all configure ci ci-nix

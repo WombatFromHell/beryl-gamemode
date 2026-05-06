@@ -28,7 +28,7 @@ jobs:
 
       - name: Build Release Artifact
         run: |
-          nix develop -c make ci
+          nix develop -c make ci-nix
 
       # only expose CI artifacts on workflow_dispatch
       - name: Upload Workflow Artifact
