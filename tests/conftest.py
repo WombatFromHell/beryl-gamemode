@@ -66,6 +66,7 @@ def _cfg(**overrides: Any) -> Config:
         enable_inhibit=False,
         enable_audio=False,
         enable_steam=False,
+        enable_systemd_run=False,
         scx_scheduler="lavd",
         scx_mode="gaming",
         profile_game="throughput-performance-bazzite",

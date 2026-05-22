@@ -92,7 +92,8 @@
           findutils
           gnused
           zip
-          py
+          python3
+          uv
         ];
 
         # Use the uv2nix-built virtualenv as the Python environment
