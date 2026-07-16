@@ -40,9 +40,44 @@ FEATURE ROUTING (comma-separated, case-insensitive):
   WRAPPER_FEATURES  Applied by wrapper mode. Default: systemd_run,steam,inhibit
 
 ENVIRONMENT:
-  NIRI_OUTPUT_NAME   Override target output (falls back to VRR_OUTPUT)
-  DEBUG=1            Enable debug logging
-  XDG_RUNTIME_DIR    State dir and log file location (default: /tmp)
+  All env vars override config file values.
+  Booleans accept: true/false, 1/0, yes/no.
+
+  General:
+    DEBUG=1              Enable debug logging
+    XDG_RUNTIME_DIR      State dir and log file location (default: /tmp)
+
+  Feature Toggles:
+    ENABLE_VRR               Enable VRR feature (default: true)
+    ENABLE_SCX_SCHEDULER     Enable SCX scheduler feature (default: true)
+    ENABLE_PERFORMANCE_MODE  Enable tuned power profile (default: false)
+    ENABLE_SCREEN_KEEP_AWAKE Enable screen inhibit (default: true)
+    ENABLE_AUDIO_PRIORITY_BOOST  Enable PulseAudio low-latency (default: false)
+    ENABLE_STEAM_ENV         Enable Steam env wrapper (default: true)
+    ENABLE_SYSTEMD_RUN       Enable systemd-run wrapper (default: true)
+
+  VRR:
+    VRR_OUTPUT          Target display output (default: DP-1)
+    NIRI_OUTPUT_NAME    Override target output (falls back to VRR_OUTPUT)
+
+  SCX Scheduler:
+    SCX_SCHEDULER       Scheduler name (default: lavd)
+    SCX_SCHEDULER_MODE  Scheduler mode (default: gaming)
+
+  Tuned:
+    GAME_PROFILE     Power profile for gaming (default: throughput-performance-bazzite)
+    DESKTOP_PROFILE  Power profile for desktop (default: balanced-bazzite)
+
+  Audio:
+    PULSE_LATENCY_MSEC  PulseAudio latency in ms (default: 60)
+
+  Steam:
+    STEAM_ENV_SCRIPT  Path to Steam env script (default: ~/.local/bin/scripts/steam-env-base.sh)
+
+  Systemd-Run:
+    SYSTEMD_RUN_ARGS  systemd-run arguments
+                      (default: --user --scope --slice=app.slice
+                       --property=CPUWeight=500 --property=IOWeight=500)
 
 EXAMPLES:
   {cmd} on                          # Toggle on
