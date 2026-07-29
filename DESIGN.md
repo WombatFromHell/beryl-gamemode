@@ -148,9 +148,9 @@ graph LR
 
 ### Feature Protocol
 
-| Module       | Purpose                                                                                                                                                                                                    |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `feature.py` | Defines `Feature` protocol (requires `enable()`/`disable()` returning `FeatureResult`). Provides `_BaseFeature` with gating (`_gate`), guarded execution (`_guarded`), and result logging (`_log_result`). |
+| Module       | Purpose                                                                                                                                                                                                                                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `feature.py` | Defines `Feature` protocol, `CommandWrapper` and `WrapperFactory` type aliases. Provides `_BaseFeature` with gating (`_gate`), guarded execution (`_guarded`), result logging (`_log_result`), and `make_checked_cmd` helper for creating `CheckedCommandRunner` instances bound to the base runner. |
 
 ### Feature Implementations (Package)
 
@@ -160,7 +160,7 @@ graph LR
 | `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                        |
 | `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                           |
 | `features/audio_priority.py` | **AudioPriority** — sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode; writes to env file and clears on disable                                                                                                                                                                                                              |
-| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver); checks display manager type via `compositor.py`                                                                                                                                                                                                       |
+| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver); checks display manager type via `compositor.py`. Includes evdev-based KB&M idle monitor (`_IdleMonitorThread`) that fires external commands on idle/active transitions independently of DMS.                                                          |
 | `features/wrappers.py`       | **Wrapper factories**: `steam_wrapper_factory` (prepends Steam env script), `inhibit_wrapper_factory` (adds `systemd-inhibit`), `systemd_run_wrapper_factory` (prepends `systemd-run`). **`WrapperChain`** — chains command wrappers sequentially. **`SystemdRun`** — prepends `systemd-run` to command argv (not a toggle feature). |
 
 ### Orchestration
@@ -171,9 +171,9 @@ graph LR
 
 ### Runner Abstraction
 
-| Module      | Purpose                                                                                                                                                                                                              |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `runner.py` | `Runner` — wraps `subprocess.run` with logging. Supports `run()`, `capture()`, `pipe()`, and command existence checks via `require()`. `CheckedCommandRunner` — pre-validates command availability before execution. |
+| Module      | Purpose                                                                                                                                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runner.py` | `Runner` — wraps `subprocess.run` with logging. Supports `run()`, `capture()`, `pipe()`, `require()`, and `make_checked_runner()`. `CheckedCommandRunner` — pre-validates command availability before execution; provides `run_or_none()`, `run_ok()`, `is_available`. |
 
 ### Logging
 
@@ -311,13 +311,13 @@ graph TD
 
 ### Feature Execution Rules
 
-| Feature       | Gate             | Compositor requirement | External deps          | Fallback behavior                      |
-| ------------- | ---------------- | ---------------------- | ---------------------- | -------------------------------------- |
-| VRR           | `enable_vrr`     | niri only              | `niri`, `jq`           | Skip if not niri or not capable        |
-| PowerProfile  | `enable_tuned`   | None                   | `tuned-adm`            | Noop if already on correct profile     |
-| SCXScheduler  | `enable_scx`     | None                   | `scxctl`               | Noop if already loaded                 |
-| AudioPriority | `enable_audio`   | None                   | None (env + file only) | Always succeeds                        |
-| ScreenInhibit | `enable_inhibit` | niri for DMS path      | `dms`, `dbus-send`     | Falls back to ScreenSaver if DMS fails |
+| Feature       | Gate             | Compositor requirement | External deps          | Fallback behavior                                                                                  |
+| ------------- | ---------------- | ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| VRR           | `enable_vrr`     | niri only              | `niri`, `jq`           | Skip if not niri or not capable                                                                    |
+| PowerProfile  | `enable_tuned`   | None                   | `tuned-adm`            | Noop if already on correct profile                                                                 |
+| SCXScheduler  | `enable_scx`     | None                   | `scxctl`               | Noop if already loaded                                                                             |
+| AudioPriority | `enable_audio`   | None                   | None (env + file only) | Always succeeds                                                                                    |
+| ScreenInhibit | `enable_inhibit` | niri for DMS path      | `dms`, `dbus-send`     | Falls back to ScreenSaver if DMS fails; optional evdev idle monitor gated by `enable_idle_monitor` |
 
 ## Features
 
@@ -333,7 +333,7 @@ graph TD
 
 ## External Dependencies (Standard Library Only)
 
-All dependencies are Python stdlib: `ctypes`, `dataclasses`, `fcntl`, `functools`, `importlib.metadata`, `json`, `logging`, `os`, `pathlib`, `shutil`, `signal`, `subprocess`, `sys`, `textwrap`, `typing`, `contextlib`.
+All dependencies are Python stdlib: `ctypes`, `dataclasses`, `fcntl`, `functools`, `importlib.metadata`, `json`, `logging`, `os`, `pathlib`, `select`, `shutil`, `signal`, `struct`, `subprocess`, `sys`, `textwrap`, `threading`, `time`, `typing`, `contextlib`.
 
 No third-party packages required.
 

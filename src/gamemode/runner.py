@@ -47,11 +47,11 @@ class Runner:
         self, args: list[str], input_data: str
     ) -> subprocess.CompletedProcess[str]:
         self._log.debug("pipe: %s  (stdin: %d bytes)", " ".join(args), len(input_data))
-        return subprocess.run(args, input=input_data, capture_output=True, text=True)
+        return subprocess.run(
+            args, input=input_data, capture_output=True, text=True, check=False
+        )
 
-    def make_checked_runner(
-        self, cmd: str, feature: str = ""
-    ) -> "CheckedCommandRunner":
+    def make_checked_runner(self, cmd: str, feature: str = "") -> CheckedCommandRunner:
         return CheckedCommandRunner(self, cmd, feature)
 
 

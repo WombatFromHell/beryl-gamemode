@@ -52,6 +52,7 @@ ENVIRONMENT:
     ENABLE_SCX_SCHEDULER     Enable SCX scheduler feature (default: true)
     ENABLE_PERFORMANCE_MODE  Enable tuned power profile (default: false)
     ENABLE_SCREEN_KEEP_AWAKE Enable screen inhibit (default: true)
+    ENABLE_IDLE_MONITOR      Enable KB&M idle monitor (default: auto if IDLE_CMD or ACTIVE_CMD is set)
     ENABLE_AUDIO_PRIORITY_BOOST  Enable PulseAudio low-latency (default: false)
     ENABLE_STEAM_ENV         Enable Steam env wrapper (default: true)
     ENABLE_SYSTEMD_RUN       Enable systemd-run wrapper (default: true)
@@ -78,6 +79,12 @@ ENVIRONMENT:
     SYSTEMD_RUN_ARGS  systemd-run arguments
                       (default: --user --scope --slice=app.slice
                        --property=CPUWeight=500 --property=IOWeight=500)
+
+  Idle Monitor:
+    IDLE_CMD            Command run on idle transition (default: "")
+    ACTIVE_CMD          Command run on active transition (default: "")
+    IDLE_TIMEOUT        Idle timeout seconds (0 = auto from DMS settings, default: 300)
+    IDLE_POLL_INTERVAL  Polling interval in seconds (default: 1)
 
 EXAMPLES:
   {cmd} on                          # Toggle on

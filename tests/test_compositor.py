@@ -34,16 +34,18 @@ class TestCompositorDetection:
         """When env vars are unset but pgrep finds niri, should return True."""
         monkeypatch.setenv("XDG_SESSION_DESKTOP", "gnome")
         monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-        with patch("shutil.which", return_value="/usr/bin/pgrep"):
-            with patch(
+        with (
+            patch("shutil.which", return_value="/usr/bin/pgrep"),
+            patch(
                 "subprocess.run",
                 returncode=0,
                 create=True,
-            ) as mock_run:
-                mock_run.return_value.returncode = 0
-                # Clear the lru_cache to force re-evaluation
-                compositor_is_niri.cache_clear()
-                assert compositor_is_niri() is True
+            ) as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+            # Clear the lru_cache to force re-evaluation
+            compositor_is_niri.cache_clear()
+            assert compositor_is_niri() is True
 
     def test_niri_pgrep_not_available(self, monkeypatch):
         """When pgrep is not available, should return False."""

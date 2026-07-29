@@ -59,23 +59,23 @@ class FakeFeature(Feature):
 
 def _cfg(**overrides: Any) -> Config:
     """Build a frozen Config with every toggle off and paths in *tmp_path*."""
-    defaults: dict[str, Any] = dict(
-        enable_scx=False,
-        enable_vrr=False,
-        enable_tuned=False,
-        enable_inhibit=False,
-        enable_audio=False,
-        enable_steam=False,
-        enable_systemd_run=False,
-        scx_scheduler="lavd",
-        scx_mode="gaming",
-        profile_game="throughput-performance-bazzite",
-        profile_desktop="balanced-bazzite",
-        audio_latency="60",
-        steam_script="",
-        vrr_output_default="DP-1",
-        runtime_dir="/tmp",
-    )
+    defaults: dict[str, Any] = {
+        "enable_scx": False,
+        "enable_vrr": False,
+        "enable_tuned": False,
+        "enable_inhibit": False,
+        "enable_audio": False,
+        "enable_steam": False,
+        "enable_systemd_run": False,
+        "scx_scheduler": "lavd",
+        "scx_mode": "gaming",
+        "profile_game": "throughput-performance-bazzite",
+        "profile_desktop": "balanced-bazzite",
+        "audio_latency": "60",
+        "steam_script": "",
+        "vrr_output_default": "DP-1",
+        "runtime_dir": "/tmp",
+    }
     defaults.update(overrides)
     return Config(**defaults)
 
@@ -229,9 +229,11 @@ def _vrr_maps(vrr_supported=True, vrr_enabled=False, output="DP-1"):
             "--arg",
             "o",
             output,
-            'if .[$o].vrr_enabled == true then "true" '
-            'elif .[$o].vrr_enabled == false then "false" '
-            'else "" end',
+            (
+                'if .[$o].vrr_enabled == true then "true" '
+                'elif .[$o].vrr_enabled == false then "false" '
+                'else "" end'
+            ),
         ): _cp(stdout=str(vrr_enabled).lower()),
     }
     return resolve_map, run_map, pipe_map

@@ -22,8 +22,10 @@ def _parse_line(line: str) -> tuple[str, str] | None:
     return key, val
 
 
-def load_config_file(path: Path = Path.home() / ".config" / "gamemode.conf") -> None:
+def load_config_file(path: Path | None = None) -> None:
     """Load KEY=VALUE config from file into os.environ (env vars take precedence)."""
+    if path is None:
+        path = Path.home() / ".config" / "gamemode.conf"
     if not path.is_file():
         return
     try:
@@ -82,6 +84,20 @@ class Config:
     )
     enable_systemd_run: bool = field(
         default_factory=lambda: _env_bool("ENABLE_SYSTEMD_RUN", True)
+    )
+    enable_idle_monitor: bool = field(
+        default_factory=lambda: _env_bool(
+            "ENABLE_IDLE_MONITOR",
+            bool(os.environ.get("IDLE_CMD") or os.environ.get("ACTIVE_CMD")),
+        )
+    )
+    idle_cmd: str = field(default_factory=lambda: os.environ.get("IDLE_CMD", ""))
+    active_cmd: str = field(default_factory=lambda: os.environ.get("ACTIVE_CMD", ""))
+    idle_timeout: int = field(
+        default_factory=lambda: int(os.environ.get("IDLE_TIMEOUT", "300"))
+    )
+    idle_poll_interval: int = field(
+        default_factory=lambda: int(os.environ.get("IDLE_POLL_INTERVAL", "1"))
     )
     scx_scheduler: str = field(
         default_factory=lambda: os.environ.get("SCX_SCHEDULER", "lavd")

@@ -1,6 +1,9 @@
 """Tests for feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit, wrappers."""
 
+import logging
 import os
+import struct
+import threading
 
 import pytest
 from conftest import (
@@ -49,7 +52,7 @@ class TestVRR:
             vrr_supported=True, vrr_enabled=False
         )
         run_map[("niri", "msg", "output", "DP-1", "vrr", "on")] = _cp()  # pyright: ignore[reportArgumentType]
-        vrr, fake = feature_builder(
+        vrr, _ = feature_builder(
             VRR,
             enable_vrr=True,
             resolve_map=resolve_map,
@@ -297,8 +300,8 @@ class TestScreenInhibit:
         assert result.skipped is True
 
     def test_enable_dms_and_screensaver_cookie(self, feature_builder, niri_session):
-        resolve_map, run_map, dbus_path = _inhibit_maps()
-        inh, fake = feature_builder(
+        resolve_map, run_map, _ = _inhibit_maps()
+        inh, _ = feature_builder(
             ScreenInhibit,
             enable_inhibit=True,
             resolve_map=resolve_map,
@@ -430,6 +433,134 @@ class TestScreenInhibit:
         result = inh.enable("DP-1")
         assert result.ok is False
         assert inh._screensaver_cookie is None
+
+
+class TestIdleMonitor:
+    """Tests for _IdleMonitorThread classification and filtering."""
+
+    def _event_data(self, *events: tuple[int, int, int]) -> bytes:
+        """Pack (type, code, value) tuples into evdev binary data."""
+        fmt = "llHHi"
+        data = b""
+        for ev_type, code, value in events:
+            data += struct.pack(fmt, 0, 0, ev_type, code, value)
+        return data
+
+    def test_meaningful_activity_key_press(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((1, 30, 1))  # KEY_A press
+        assert _IdleMonitorThread._meaningful_activity(data) is True
+
+    def test_meaningful_activity_key_release(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((1, 30, 0))  # KEY_A release
+        assert _IdleMonitorThread._meaningful_activity(data) is False
+
+    def test_meaningful_activity_rel_noise(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((2, 0, 1))  # REL_X +1 (below threshold)
+        assert _IdleMonitorThread._meaningful_activity(data) is False
+
+    def test_meaningful_activity_rel_meaningful(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((2, 0, 10))  # REL_X +10 (above threshold)
+        assert _IdleMonitorThread._meaningful_activity(data) is True
+
+    def test_meaningful_activity_abs(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((3, 0, 500))  # ABS_X
+        assert _IdleMonitorThread._meaningful_activity(data) is True
+
+    def test_meaningful_activity_syn_filtered(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((0, 0, 0))  # EV_SYN
+        assert _IdleMonitorThread._meaningful_activity(data) is False
+
+    def test_meaningful_activity_multiple_events(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        data = self._event_data((0, 0, 0), (2, 0, 100), (0, 0, 0))
+        assert _IdleMonitorThread._meaningful_activity(data) is True
+
+    def test_classify_via_udevadm_keyboard(self, monkeypatch):
+        import subprocess
+
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        def fake_run(*args, **kwargs):
+            return subprocess.CompletedProcess(
+                [],
+                returncode=0,
+                stdout="ID_INPUT=1\nID_INPUT_KEYBOARD=1\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") == "kbm"
+
+    def test_classify_via_udevadm_mouse(self, monkeypatch):
+        import subprocess
+
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        def fake_run(*args, **kwargs):
+            return subprocess.CompletedProcess(
+                [],
+                returncode=0,
+                stdout="ID_INPUT=1\nID_INPUT_MOUSE=1\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") == "kbm"
+
+    def test_classify_via_udevadm_joystick(self, monkeypatch):
+        import subprocess
+
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        def fake_run(*args, **kwargs):
+            return subprocess.CompletedProcess(
+                [],
+                returncode=0,
+                stdout="ID_INPUT=1\nID_INPUT_JOYSTICK=1\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") is None
+
+    def test_read_bitmap_nonexistent(self):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        assert _IdleMonitorThread._read_bitmap("/nonexistent/path") is None
+
+    def test_on_ac_missing_supply(self, tmp_path):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        result = _IdleMonitorThread._on_ac()
+        # depends on system; just assert it returns a bool
+        assert isinstance(result, bool)
+
+    def test_get_timeout_from_config(self, tmp_path_cfg):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        cfg = _cfg(runtime_dir=str(tmp_path_cfg.runtime_dir), idle_timeout=120)
+        thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
+        assert thread._get_timeout() == 120
+
+    def test_get_timeout_zero_when_no_dms_settings(self, tmp_path):
+        from gamemode.features.screen_inhibit import _IdleMonitorThread
+
+        cfg = _cfg(runtime_dir=str(tmp_path), idle_timeout=0)
+        thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
+        assert thread._get_timeout() == 0
 
 
 class TestSteamWrapperPath:

@@ -33,9 +33,11 @@ class TestActionWrapper:
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
         true_runner = Runner(logger)
-        with mock_collect_features(features):
-            with patch.object(Runner, "resolve", return_value="/bin/true"):
-                retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
+        with (
+            mock_collect_features(features),
+            patch.object(Runner, "resolve", return_value="/bin/true"),
+        ):
+            retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
         assert retcode == 0
         assert feature_a.disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -140,9 +142,11 @@ with patch.object(actions, "collect_features", return_value=features):
         state.init()
         features = [("fake", FakeFeature("x"))]
         runner = Runner(logger)
-        with mock_collect_features(features):
-            with patch.object(Runner, "resolve", return_value="/bin/false"):
-                retcode = action_wrapper(cfg, runner, logger, ["/bin/false"])
+        with (
+            mock_collect_features(features),
+            patch.object(Runner, "resolve", return_value="/bin/false"),
+        ):
+            retcode = action_wrapper(cfg, runner, logger, ["/bin/false"])
         assert retcode == 1
         assert features[0][1].disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -155,9 +159,11 @@ with patch.object(actions, "collect_features", return_value=features):
         feature_a = FakeFeature("a")
         features = [("fake_a", feature_a)]
         runner = Runner(logger)
-        with mock_collect_features(features):
-            with patch.object(Runner, "resolve", return_value="/nonexistent/bin/cmd"):
-                retcode = action_wrapper(cfg, runner, logger, ["/nonexistent/bin/cmd"])
+        with (
+            mock_collect_features(features),
+            patch.object(Runner, "resolve", return_value="/nonexistent/bin/cmd"),
+        ):
+            retcode = action_wrapper(cfg, runner, logger, ["/nonexistent/bin/cmd"])
         assert retcode == 1
         assert feature_a.disable_calls == [cfg.vrr_output_default]
         assert state.mode == ""
@@ -193,13 +199,15 @@ class TestWatchParent:
             def strerror(err):
                 return "error"
 
-        with patch.object(
-            ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
-            "find_library",
-            return_value="/lib/libc.so",
+        with (
+            patch.object(
+                ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
+                "find_library",
+                return_value="/lib/libc.so",
+            ),
+            patch.object(ctypes, "CDLL", return_value=FakeLibc),
         ):
-            with patch.object(ctypes, "CDLL", return_value=FakeLibc):
-                _watch_parent(logger)  # should not raise
+            _watch_parent(logger)  # should not raise
 
     def test_watch_parent_success(self, tmp_path, logger):
         """When prctl succeeds, _watch_parent should not raise."""
@@ -210,13 +218,15 @@ class TestWatchParent:
             def prctl(*args):
                 return 0
 
-        with patch.object(
-            ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
-            "find_library",
-            return_value="/lib/libc.so",
+        with (
+            patch.object(
+                ctypes.util,  # pyright: ignore[reportAttributeAccessIssue]
+                "find_library",
+                return_value="/lib/libc.so",
+            ),
+            patch.object(ctypes, "CDLL", return_value=FakeLibc),
         ):
-            with patch.object(ctypes, "CDLL", return_value=FakeLibc):
-                _watch_parent(logger)  # should not raise
+            _watch_parent(logger)  # should not raise
 
 
 class TestStateManagerLockLifetime:

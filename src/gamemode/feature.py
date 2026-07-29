@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Protocol, runtime_checkable
+from collections.abc import Callable
+from typing import Protocol, runtime_checkable
 
 from gamemode.config import Config
 from gamemode.runner import CheckedCommandRunner, Runner
 
 
 class FeatureResult:
-    __slots__ = ("ok", "skipped", "changed", "detail")
+    __slots__ = ("changed", "detail", "ok", "skipped")
 
     def __init__(
         self,

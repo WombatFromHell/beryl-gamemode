@@ -27,6 +27,7 @@ def compositor_is_niri() -> bool:
             ["pgrep", "-x", "niri"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            check=False,
         ).returncode
         == 0
     )

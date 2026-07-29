@@ -15,7 +15,7 @@ graph TB
     test_orch["tests/test_orchestration.py<br/>6 tests<br/>TestFeatureOrchestration"]
     test_logging["tests/test_logging.py<br/>3 tests<br/>TestLogging"]
     test_state["tests/test_state.py<br/>14 tests<br/>TestStateManager"]
-    test_features["tests/test_features.py<br/>47 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit,<br/>TestSteamWrapperPath, TestInhibitWrapperFactory,<br/>TestSystemdRunWrapper, TestWrapperChain,<br/>TestWrapperFactories"]
+    test_features["tests/test_features.py<br/>61 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestIdleMonitor,<br/>TestSteamWrapperPath, TestInhibitWrapperFactory,<br/>TestSystemdRunWrapper, TestWrapperChain,<br/>TestWrapperFactories"]
     test_actions["tests/test_actions.py<br/>16 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime,<br/>TestActionOn, TestActionOff,<br/>TestActionStatus, TestCleanupClosure"]
 
     conftest --> test_cli
@@ -75,20 +75,26 @@ graph TB
 | `test_logging.py`       | `logging_setup.py` | console handler, file handler, debug mode file handler                                                                                                                     | 3          |
 | `test_state.py`         | `state.py`         | `StateManager` CRUD, file locking, lock contention, process-death release, `pid_alive`, `cmd()`, `clear()` glob cleanup                                                    | 14         |
 
+### Smoke Tests
+
+| File                      | Purpose                                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoketest_evdev_idle.py` | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system. |
+
 ### Integration Tests
 
 | Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                           | Test Count |
 | ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit; wrapper factories: Steam, Inhibit, SystemdRun; WrapperChain, WRAPPER_FACTORIES registry                                                                                | 47         |
+| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit; wrapper factories: Steam, Inhibit, SystemdRun; WrapperChain, WRAPPER_FACTORIES registry; idle monitor classification/filtering                                         | 61         |
 | `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; `_watch_parent` libc/prctl; lock lifetime; `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state | 16         |
 
 ### Test Coverage Summary
 
 | Category    | Files  | Tests   | Scope                                       |
 | ----------- | ------ | ------- | ------------------------------------------- |
-| Unit        | 9      | 78      | Individual module functions/classes         |
-| Integration | 2      | 63      | Cross-module: features, actions, subprocess |
-| **Total**   | **11** | **141** | All public API paths                        |
+| Unit        | 9      | 87      | Individual module functions/classes         |
+| Integration | 2      | 77      | Cross-module: features, actions, subprocess |
+| **Total**   | **11** | **164** | All public API paths                        |
 
 ### Feature Test Matrix
 
@@ -99,6 +105,7 @@ graph TB
 | SCXScheduler    | ✓                      |              | enable/disable/switch_scheduler/noop/skip                           |
 | AudioPriority   | ✓                      |              | enable env/set file/disable clear/remove file                       |
 | ScreenInhibit   | ✓                      |              | DMS/ScreenSaver fallback/cookie/idempotent/error/all_fail           |
+| IdleMonitor     | ✓                      |              | meaningful_activity filtering, udevadm classification, timeout      |
 | Steam wrapper   |                        | ✓            | enabled/missing_script/disabled                                     |
 | inhibit wrapper |                        | ✓            | disabled/systemd-inhibit missing/enabled                            |
 | systemd-run     |                        | ✓            | disabled/missing/success/empty_args                                 |

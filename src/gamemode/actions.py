@@ -10,8 +10,9 @@ import os
 import signal
 import subprocess
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 from gamemode.compositor import compositor_is_niri, output_resolve, session_is_kde
 from gamemode.config import Config
