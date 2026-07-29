@@ -447,43 +447,43 @@ class TestIdleMonitor:
         return data
 
     def test_meaningful_activity_key_press(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((1, 30, 1))  # KEY_A press
         assert _IdleMonitorThread._meaningful_activity(data) is True
 
     def test_meaningful_activity_key_release(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((1, 30, 0))  # KEY_A release
         assert _IdleMonitorThread._meaningful_activity(data) is False
 
     def test_meaningful_activity_rel_noise(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((2, 0, 1))  # REL_X +1 (below threshold)
         assert _IdleMonitorThread._meaningful_activity(data) is False
 
     def test_meaningful_activity_rel_meaningful(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((2, 0, 10))  # REL_X +10 (above threshold)
         assert _IdleMonitorThread._meaningful_activity(data) is True
 
     def test_meaningful_activity_abs(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((3, 0, 500))  # ABS_X
         assert _IdleMonitorThread._meaningful_activity(data) is True
 
     def test_meaningful_activity_syn_filtered(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((0, 0, 0))  # EV_SYN
         assert _IdleMonitorThread._meaningful_activity(data) is False
 
     def test_meaningful_activity_multiple_events(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         data = self._event_data((0, 0, 0), (2, 0, 100), (0, 0, 0))
         assert _IdleMonitorThread._meaningful_activity(data) is True
@@ -491,7 +491,7 @@ class TestIdleMonitor:
     def test_classify_via_udevadm_keyboard(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -507,7 +507,7 @@ class TestIdleMonitor:
     def test_classify_via_udevadm_mouse(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -523,7 +523,7 @@ class TestIdleMonitor:
     def test_classify_via_udevadm_joystick(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -537,26 +537,26 @@ class TestIdleMonitor:
         assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") is None
 
     def test_read_bitmap_nonexistent(self):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         assert _IdleMonitorThread._read_bitmap("/nonexistent/path") is None
 
     def test_on_ac_missing_supply(self, tmp_path):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         result = _IdleMonitorThread._on_ac()
         # depends on system; just assert it returns a bool
         assert isinstance(result, bool)
 
     def test_get_timeout_from_config(self, tmp_path_cfg):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         cfg = _cfg(runtime_dir=str(tmp_path_cfg.runtime_dir), idle_timeout=120)
         thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
         assert thread._get_timeout() == 120
 
     def test_get_timeout_zero_when_no_dms_settings(self, tmp_path):
-        from gamemode.features.screen_inhibit import _IdleMonitorThread
+        from gamemode.features.idle_monitor import _IdleMonitorThread
 
         cfg = _cfg(runtime_dir=str(tmp_path), idle_timeout=0)
         thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
