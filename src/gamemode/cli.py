@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -52,7 +53,7 @@ ENVIRONMENT:
     ENABLE_SCX_SCHEDULER     Enable SCX scheduler feature (default: true)
     ENABLE_PERFORMANCE_MODE  Enable tuned power profile (default: false)
     ENABLE_SCREEN_KEEP_AWAKE Enable screen inhibit (default: true)
-    ENABLE_IDLE_MONITOR      Enable KB&M idle monitor (default: auto if IDLE_CMD or ACTIVE_CMD is set)
+    ENABLE_IDLE_MONITOR      Enable KB&M idle monitor (default: auto if both IDLE_CMD and ACTIVE_CMD are set)
     ENABLE_AUDIO_PRIORITY_BOOST  Enable PulseAudio low-latency (default: false)
     ENABLE_STEAM_ENV         Enable Steam env wrapper (default: true)
     ENABLE_SYSTEMD_RUN       Enable systemd-run wrapper (default: true)
@@ -81,6 +82,8 @@ ENVIRONMENT:
                        --property=CPUWeight=500 --property=IOWeight=500)
 
   Idle Monitor:
+    ENABLE_IDLE_MONITOR Enable KB&M idle monitor (default: auto if both IDLE_CMD and ACTIVE_CMD are set,
+                        or set to 1 to enable with only one)
     IDLE_CMD            Command run on idle transition (default: "")
     ACTIVE_CMD          Command run on active transition (default: "")
     IDLE_TIMEOUT        Idle timeout seconds (0 = auto from DMS settings, default: 300)
@@ -126,6 +129,28 @@ def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
     return "wrapper", argv
 
 
+def _warn_idle_missing_pair(config: Config, log: logging.Logger, mode: str) -> None:
+    """Warn if idle monitor config has only one of IDLE_CMD/ACTIVE_CMD."""
+    if mode not in ("on", "wrapper"):
+        return
+    idle_only = bool(config.idle_cmd) != bool(config.active_cmd)
+    if not idle_only:
+        return
+    missing = "ACTIVE_CMD" if config.idle_cmd else "IDLE_CMD"
+    if os.environ.get("ENABLE_IDLE_MONITOR") is not None:
+        log.warning(
+            "IDLE_CMD and ACTIVE_CMD must both be set for a safe (idempotent) idle monitor; "
+            "%s is missing — idle monitor enabled with partial pair",
+            missing,
+        )
+    else:
+        log.warning(
+            "IDLE_CMD and ACTIVE_CMD must both be set for a safe (idempotent) idle monitor; "
+            "%s is missing — set ENABLE_IDLE_MONITOR=1 to enable with partial pair",
+            missing,
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -148,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
     runner = Runner(log)
     if not validate_deps(config, runner, log):
         return 1
+
+    _warn_idle_missing_pair(config, log, mode)
 
     return {
         "on": lambda: action_on(config, runner, log, debug=debug),

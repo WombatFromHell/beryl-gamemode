@@ -434,6 +434,28 @@ class TestScreenInhibit:
         assert result.ok is False
         assert inh._screensaver_cookie is None
 
+    def test_stop_monitor_fires_active_cmd(self, feature_builder, monkeypatch):
+        from unittest.mock import MagicMock
+
+        mock_popen = MagicMock()
+        mock_popen.return_value.__enter__.return_value.communicate.return_value = (
+            b"",
+            b"",
+        )
+        monkeypatch.setattr("subprocess.Popen", mock_popen)
+        inh, _ = feature_builder(
+            ScreenInhibit,
+            enable_inhibit=True,
+            enable_idle_monitor=True,
+            idle_cmd="test-idle-cmd",
+            active_cmd="test-active-cmd",
+        )
+        inh._start_idle_monitor()
+        inh._stop_idle_monitor()
+        fire_calls = [c for c in mock_popen.call_args_list if c[1].get("shell") is True]
+        assert len(fire_calls) == 1
+        assert fire_calls[0][0][0] == "test-active-cmd"
+
 
 class TestIdleMonitor:
     """Tests for _IdleMonitorThread classification and filtering."""

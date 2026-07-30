@@ -88,7 +88,7 @@ class Config:
     enable_idle_monitor: bool = field(
         default_factory=lambda: _env_bool(
             "ENABLE_IDLE_MONITOR",
-            bool(os.environ.get("IDLE_CMD") or os.environ.get("ACTIVE_CMD")),
+            bool(os.environ.get("IDLE_CMD") and os.environ.get("ACTIVE_CMD")),
         )
     )
     idle_cmd: str = field(default_factory=lambda: os.environ.get("IDLE_CMD", ""))

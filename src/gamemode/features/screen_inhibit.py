@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 from gamemode.compositor import compositor_is_niri
@@ -126,6 +127,19 @@ class ScreenInhibit(_BaseFeature):
     def _start_idle_monitor(self) -> str | None:
         if not self._cfg.enable_idle_monitor:
             return None
+        if not self._cfg.idle_cmd or not self._cfg.active_cmd:
+            missing = "ACTIVE_CMD" if self._cfg.idle_cmd else "IDLE_CMD"
+            if os.environ.get("ENABLE_IDLE_MONITOR") is not None:
+                self._log.warning(
+                    "%s is missing — idle monitor started with partial pair", missing
+                )
+            else:
+                self._log.warning(
+                    "%s is missing — set ENABLE_IDLE_MONITOR=1 to enable idle monitor "
+                    "with partial pair",
+                    missing,
+                )
+                return None
         if self._idle_thread is not None:
             return "idle monitor already running"
         self._idle_stop.clear()
@@ -138,11 +152,31 @@ class ScreenInhibit(_BaseFeature):
 
     def _stop_idle_monitor(self) -> str | None:
         if self._idle_thread is None:
+            if self._cfg.enable_idle_monitor and (
+                not self._cfg.idle_cmd or not self._cfg.active_cmd
+            ):
+                missing = "ACTIVE_CMD" if self._cfg.idle_cmd else "IDLE_CMD"
+                self._log.warning(
+                    "%s is missing — idle state may not be restored on cleanup",
+                    missing,
+                )
             return None
         self._idle_stop.set()
         self._idle_thread.join(timeout=2)
         self._idle_thread = None
         self._log.debug("Idle monitor thread stopped")
+        if self._cfg.enable_idle_monitor and self._cfg.active_cmd:
+            from gamemode.features.idle_monitor import _IdleMonitorThread
+
+            _IdleMonitorThread._fire(self._cfg.active_cmd)
+        if self._cfg.enable_idle_monitor and (
+            not self._cfg.idle_cmd or not self._cfg.active_cmd
+        ):
+            missing = "ACTIVE_CMD" if self._cfg.idle_cmd else "IDLE_CMD"
+            self._log.warning(
+                "%s is missing — idle state may not be restored on cleanup",
+                missing,
+            )
         return "idle monitor stopped"
 
     def _do_enable(self, output: str) -> FeatureResult:

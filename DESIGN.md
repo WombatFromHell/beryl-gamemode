@@ -148,8 +148,8 @@ graph LR
 
 ### Feature Protocol
 
-| Module       | Purpose                                                                                                                                                                                                                                                                                              |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Purpose                                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `feature.py` | Defines `FeatureResult`, `CommandWrapper` and `WrapperFactory` type aliases. Provides `_BaseFeature` with `make_checked_cmd` helper for creating `CheckedCommandRunner` instances bound to the base runner, plus the `log_feature_result` module-level function. |
 
 ### Feature Implementations (Package)
