@@ -10,21 +10,18 @@ from gamemode.runner import Runner
 
 
 class PowerProfile(_BaseFeature):
-    _CMD = "tuned-adm"
-    _FEATURE = "Performance mode"
-
     _feature_name = "Performance mode"
 
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._tuned = self.make_checked_cmd(self._CMD, self._FEATURE)
+        self._tuned = self.make_checked_cmd("tuned-adm", "Performance mode")
 
     @property
     def _feature_enabled(self) -> bool:
         return self._cfg.enable_tuned
 
     def _current(self) -> str:
-        result = self._tuned.run_or_none([self._CMD, "active"])
+        result = self._tuned.run_or_none(["tuned-adm", "active"])
         if result is None:
             return ""
         for line in result.stdout.splitlines():
@@ -32,20 +29,12 @@ class PowerProfile(_BaseFeature):
                 return line.split(":", 1)[1].strip()
         return ""
 
-    def _set(self, profile: str) -> bool:
-        return self._tuned.run_ok([self._CMD, "profile", profile])
-
     def _profile_set(self, desired: str) -> FeatureResult:
         current = self._current()
         if current == desired:
             return FeatureResult.noop()
         self._log.info("Profile: %s → %s", current or "none", desired)
-        ok = self._set(desired)
-        return self._profile_set_result(current, desired, ok)
-
-    def _profile_set_result(
-        self, current: str, desired: str, ok: bool
-    ) -> FeatureResult:
+        ok = self._tuned.run_ok(["tuned-adm", "profile", desired])
         if ok:
             return FeatureResult.did_change(f"{current or 'none'} → {desired}")
         self._log.error("failed to set %s", desired)

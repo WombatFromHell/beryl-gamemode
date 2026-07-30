@@ -58,7 +58,7 @@ from contextlib import contextmanager
 sys.path.insert(0, {gamemode_dir!r})
 from gamemode.config import Config
 from gamemode.state import StateManager
-from gamemode.feature import Feature, FeatureResult
+from gamemode.feature import FeatureResult
 from gamemode.runner import Runner
 from gamemode import actions
 import logging
@@ -77,7 +77,7 @@ state.init()
 state_file = {str(state_file)!r}
 ready_file = {str(ready_file)!r}
 
-class RecordFeature(Feature):
+class RecordFeature:
     def __init__(self):
         self.en = []
         self.dis = []
@@ -244,7 +244,7 @@ import sys, os, time
 from unittest.mock import patch
 sys.path.insert(0, {gamemode_dir!r})
 from gamemode.config import Config
-from gamemode.feature import Feature, FeatureResult
+from gamemode.feature import FeatureResult
 from gamemode.runner import Runner
 from gamemode import actions
 import logging
@@ -259,7 +259,7 @@ cfg = Config(
     runtime_dir={str(tmp_path)!r}, vrr_output_default="DP-1",
 )
 
-class RecordFeature(Feature):
+class RecordFeature:
     def __init__(self):
         self.en = []
         self.dis = []
@@ -373,7 +373,7 @@ class TestActionStatus:
         ret = action_status(cfg)
         assert ret == 0
         output = capsys.readouterr().out
-        assert "State:" in output
+        assert "Mode:" in output
         assert "Compositor:" in output
 
 
@@ -403,7 +403,11 @@ class TestCleanupClosure:
         ff = FakeFeature("test")
         features = [("test", ff)]
         cleanup = gamemode_actions._build_cleanup_closure(
-            features, "DP-1", logger, state, preserve_state=True
+            features,
+            "DP-1",
+            logger,
+            state,
+            preserve_state=True,
         )
         cleanup()
         assert state.is_active

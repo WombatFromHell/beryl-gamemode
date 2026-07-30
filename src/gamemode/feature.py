@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
 
 from gamemode.config import Config
 from gamemode.runner import CheckedCommandRunner, Runner
@@ -51,12 +50,6 @@ class FeatureResult:
         return cls(ok=False, detail=detail)
 
 
-@runtime_checkable
-class Feature(Protocol):
-    def enable(self, _output: str) -> FeatureResult: ...
-    def disable(self, _output: str) -> FeatureResult: ...
-
-
 CommandWrapper = Callable[[list[str]], list[str]]
 WrapperFactory = Callable[[Config, Runner, logging.Logger], CommandWrapper | None]
 
@@ -88,43 +81,26 @@ class _BaseFeature:
     # -- public API ------------------------------------------------------
 
     def enable(self, output: str) -> FeatureResult:
-        gate = self._gate(self._feature_enabled, self._feature_name)
-        if gate is not None:
-            return gate
+        if not self._feature_enabled:
+            return FeatureResult.skip("disabled by config")
         return self._do_enable(output)
 
     def disable(self, output: str) -> FeatureResult:
-        gate = self._gate(self._feature_enabled, self._feature_name)
-        if gate is not None:
-            return gate
-        return self._do_disable(output)
-
-    # -- helpers ----------------------------------------------------------
-
-    def _gate(self, enabled: bool, _name: str) -> FeatureResult | None:
-        if not enabled:
+        if not self._feature_enabled:
             return FeatureResult.skip("disabled by config")
-        return None
-
-    def _guarded(
-        self, enabled: bool, name: str, fn: Callable[[], FeatureResult]
-    ) -> FeatureResult:
-        gate = self._gate(enabled, name)
-        if gate is not None:
-            return gate
-        return fn()
+        return self._do_disable(output)
 
     def make_checked_cmd(self, cmd: str, feature: str = "") -> CheckedCommandRunner:
         """Create a CheckedCommandRunner via the base runner."""
         return self._run.make_checked_runner(cmd, feature)
 
-    @staticmethod
-    def _log_result(name: str, result: FeatureResult, log: logging.Logger) -> None:
-        if result.skipped:
-            log.debug("%s: skipped (%s)", name, result.detail)
-        elif result.changed:
-            log.info("%s: %s", name, result.detail)
-        elif not result.ok:
-            log.warning("%s: %s", name, result.detail)
-        else:
-            log.debug("%s: no change", name)
+
+def log_feature_result(name: str, result: FeatureResult, log: logging.Logger) -> None:
+    if result.skipped:
+        log.debug("%s: skipped (%s)", name, result.detail)
+    elif result.changed:
+        log.info("%s: %s", name, result.detail)
+    elif not result.ok:
+        log.warning("%s: %s", name, result.detail)
+    else:
+        log.debug("%s: no change", name)

@@ -4,9 +4,7 @@ import logging
 
 import pytest
 
-from gamemode.config import Config
-from gamemode.feature import FeatureResult, _BaseFeature
-from gamemode.runner import Runner
+from gamemode.feature import FeatureResult, log_feature_result
 
 
 class TestFeatureResult:
@@ -57,59 +55,13 @@ class TestFeatureResult:
 
 
 class TestBaseFeature:
-    def _make_base(self, logger):
-        cfg = Config(
-            enable_scx=False,
-            enable_vrr=False,
-            enable_tuned=False,
-            enable_inhibit=False,
-            enable_audio=False,
-            enable_steam=False,
-            runtime_dir="/tmp",
-        )
-        runner = Runner(logger)
-        return _BaseFeature(cfg, runner, logger)
-
-    def test_gate_disabled(self, logger):
-        base = self._make_base(logger)
-        result = base._gate(enabled=False, _name="test")
-        assert result is not None
-        assert result.skipped is True
-        assert "disabled" in result.detail
-
-    def test_gate_enabled(self, logger):
-        base = self._make_base(logger)
-        result = base._gate(enabled=True, _name="test")
-        assert result is None
-
-    def test_guarded_disabled(self, logger):
-        base = self._make_base(logger)
-        called = [False]
-        result = base._guarded(
-            enabled=False,
-            name="test",
-            fn=lambda: (called.__setitem__(0, True), FeatureResult.noop())[1],
-        )
-        assert result.skipped is True
-        assert called[0] is False
-
-    def test_guarded_enabled(self, logger):
-        base = self._make_base(logger)
-        result = base._guarded(
-            enabled=True,
-            name="test",
-            fn=lambda: FeatureResult.did_change("applied"),
-        )
-        assert result.changed is True
-        assert result.detail == "applied"
-
     def test_log_result_skipped(self, caplog):
         log = logging.getLogger("test_log_skip")
         log.handlers.clear()
         log.setLevel(logging.DEBUG)
         caplog.set_level(logging.DEBUG)
         result = FeatureResult.skip("reason")
-        _BaseFeature._log_result("test", result, log)
+        log_feature_result("test", result, log)
         assert any("skipped" in r.message for r in caplog.records)
 
     def test_log_result_changed(self, caplog):
@@ -118,7 +70,7 @@ class TestBaseFeature:
         log.setLevel(logging.DEBUG)
         caplog.set_level(logging.INFO)
         result = FeatureResult.did_change("detail")
-        _BaseFeature._log_result("test", result, log)
+        log_feature_result("test", result, log)
         assert any("detail" in r.message for r in caplog.records)
 
     def test_log_result_error(self, caplog):
@@ -127,7 +79,7 @@ class TestBaseFeature:
         log.setLevel(logging.DEBUG)
         caplog.set_level(logging.WARNING)
         result = FeatureResult.error("fail")
-        _BaseFeature._log_result("test", result, log)
+        log_feature_result("test", result, log)
         assert any("fail" in r.message for r in caplog.records)
 
     def test_log_result_noop(self, caplog):
@@ -136,5 +88,5 @@ class TestBaseFeature:
         log.setLevel(logging.DEBUG)
         caplog.set_level(logging.DEBUG)
         result = FeatureResult.noop()
-        _BaseFeature._log_result("test", result, log)
+        log_feature_result("test", result, log)
         assert any("no change" in r.message for r in caplog.records)

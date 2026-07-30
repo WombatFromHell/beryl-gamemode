@@ -61,16 +61,13 @@ class VRR(_BaseFeature):
             return False
         return self._niri_cmd.run_ok(["niri", "msg", "output", output, "vrr", state])
 
-    def _check_niri_running(self) -> bool:
-        return compositor_is_niri()
-
     def _do_enable(self, output: str) -> FeatureResult:
-        if not self._check_niri_running():
+        if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
         return self._vrr_toggle(output, "on")
 
     def _do_disable(self, output: str) -> FeatureResult:
-        if not self._check_niri_running():
+        if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
         return self._vrr_toggle(output, "off")
 

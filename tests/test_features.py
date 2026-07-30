@@ -667,22 +667,6 @@ class TestSystemdRunWrapper:
 
 
 class TestWrapperChain:
-    def test_add_and_apply(self, logger):
-        """WrapperChain.add and apply should chain wrappers."""
-        chain = WrapperChain()
-        chain.add(lambda argv: ["w1", *argv])
-        chain.add(lambda argv: ["w2", *argv])
-        result = chain.apply(["mygame"])
-        assert result == ["w2", "w1", "mygame"]
-
-    def test_add_none_ignored(self, logger):
-        """WrapperChain.add should ignore None wrappers."""
-        chain = WrapperChain()
-        chain.add(None)
-        chain.add(lambda argv: ["w1", *argv])
-        result = chain.apply(["mygame"])
-        assert result == ["w1", "mygame"]
-
     def test_add_factory(self, tmp_path, logger):
         """WrapperChain.add_factory should call factory and add non-None wrappers."""
         cfg = _cfg(

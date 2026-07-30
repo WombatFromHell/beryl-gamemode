@@ -16,9 +16,8 @@ from typing import Any
 
 from gamemode.compositor import compositor_is_niri, output_resolve, session_is_kde
 from gamemode.config import Config
-from gamemode.feature import Feature
+from gamemode.feature import _BaseFeature
 from gamemode.features.wrappers import WRAPPER_FACTORIES, WrapperChain
-from gamemode.logging_setup import setup_logging
 from gamemode.orchestration import collect_features, features_disable, features_enable
 from gamemode.runner import Runner
 from gamemode.state import StateManager
@@ -33,13 +32,12 @@ def _prepare_base(
     output = output_resolve(config)
     state = StateManager(config)
     state.init()
-    setup_logging(config, to_file=debug)
     return output, state
 
 
 def _prepare_action(
     config: Config, runner: Runner, log: logging.Logger, *, debug: bool = False
-) -> tuple[str, collections.abc.Sequence[tuple[str, Feature]], StateManager]:
+) -> tuple[str, collections.abc.Sequence[tuple[str, _BaseFeature]], StateManager]:
     output, state = _prepare_base(config, log, debug=debug)
     features = collect_features(config, runner, log)
     return output, features, state
@@ -76,15 +74,6 @@ def action_off(
     return 0
 
 
-def _alive_stale(
-    state: StateManager, mode: str | None, pid: int | None
-) -> tuple[bool | None, bool | None]:
-    if mode == "wrapper" and pid is not None:
-        alive = state.pid_alive()
-        return alive, not alive
-    return None, None
-
-
 def _build_status_lines(config: Config, state: StateManager) -> list[str]:
     mode = state.mode
     pid = state.pid()
@@ -94,9 +83,12 @@ def _build_status_lines(config: Config, state: StateManager) -> list[str]:
     session = os.environ.get("XDG_SESSION_DESKTOP", "(unset)")
     current_desktop = os.environ.get("XDG_CURRENT_DESKTOP", "(unset)")
     output = output_resolve(config)
-    alive, stale = _alive_stale(state, mode, pid)
+    if mode == "wrapper" and pid is not None:
+        alive = state.pid_alive()
+        stale = not alive
+    else:
+        alive = stale = None
     return [
-        f"State:            {mode or '(none)'}",
         f"Mode:             {mode or '(none)'}",
         f"PID:              {pid if pid is not None else 'N/A (toggle mode)'}",
         f"Alive:            {alive if alive is not None else 'N/A'}",
@@ -121,19 +113,20 @@ def action_status(config: Config) -> int:
 
 
 def _build_cleanup_closure(
-    features: collections.abc.Sequence[tuple[str, Feature]],
+    features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     output: str,
     log: logging.Logger,
     state: StateManager,
     *,
     preserve_state: bool = False,
 ):
-    _done = [False]
+    _done = False
 
     def _cleanup() -> None:
-        if _done[0]:
+        nonlocal _done
+        if _done:
             return
-        _done[0] = True
+        _done = True
         try:
             features_disable(features, output, log)
             if not preserve_state:

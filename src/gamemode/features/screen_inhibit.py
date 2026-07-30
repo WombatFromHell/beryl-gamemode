@@ -8,7 +8,6 @@ import threading
 from gamemode.compositor import compositor_is_niri
 from gamemode.config import Config
 from gamemode.feature import FeatureResult, _BaseFeature
-from gamemode.features.idle_monitor import _IdleMonitorThread
 from gamemode.runner import Runner
 
 
@@ -26,7 +25,7 @@ class ScreenInhibit(_BaseFeature):
         self._dms = self.make_checked_cmd(self._DMS_CMD, self._DMS_FEATURE)
         self._dbus_send: str | None = runner.resolve("dbus-send")
         self._screensaver_cookie: int | None = None
-        self._idle_thread: _IdleMonitorThread | None = None
+        self._idle_thread: threading.Thread | None = None
         self._idle_stop = threading.Event()
 
     @property
@@ -130,6 +129,8 @@ class ScreenInhibit(_BaseFeature):
         if self._idle_thread is not None:
             return "idle monitor already running"
         self._idle_stop.clear()
+        from gamemode.features.idle_monitor import _IdleMonitorThread
+
         self._idle_thread = _IdleMonitorThread(self._cfg, self._log, self._idle_stop)
         self._idle_thread.start()
         self._log.debug("Idle monitor thread started")

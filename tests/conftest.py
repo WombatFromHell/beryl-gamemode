@@ -13,12 +13,12 @@ import pytest
 
 from gamemode import actions as gamemode_actions
 from gamemode.config import Config
-from gamemode.feature import Feature, FeatureResult
+from gamemode.feature import FeatureResult, _BaseFeature
 from gamemode.runner import Runner
 from gamemode.state import StateManager
 
 
-class FakeFeature(Feature):
+class FakeFeature(_BaseFeature):
     """Trivial feature that records enable/disable calls.
 
     Usage::
@@ -43,12 +43,12 @@ class FakeFeature(Feature):
             f"{name} disabled"
         )
 
-    def enable(self, _output: str) -> FeatureResult:
-        self.enable_calls.append(_output)
+    def enable(self, output: str) -> FeatureResult:
+        self.enable_calls.append(output)
         return self.enable_result
 
-    def disable(self, _output: str) -> FeatureResult:
-        self.disable_calls.append(_output)
+    def disable(self, output: str) -> FeatureResult:
+        self.disable_calls.append(output)
         return self.disable_result
 
 

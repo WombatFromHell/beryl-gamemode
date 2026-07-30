@@ -10,27 +10,24 @@ from gamemode.runner import Runner
 
 
 class SCXScheduler(_BaseFeature):
-    _CMD = "scxctl"
-    _FEATURE = "SCX scheduler"
-
     _feature_name = "SCX scheduler"
 
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._scxctl = self.make_checked_cmd(self._CMD, self._FEATURE)
+        self._scxctl = self.make_checked_cmd("scxctl", "SCX scheduler")
 
     @property
     def _feature_enabled(self) -> bool:
         return self._cfg.enable_scx
 
     def _status(self) -> str:
-        result = self._scxctl.run_or_none([self._CMD, "get"])
+        result = self._scxctl.run_or_none(["scxctl", "get"])
         return result.stdout.strip() if result else ""
 
     def _apply(self) -> FeatureResult:
         ok = self._scxctl.run_ok(
             [
-                self._CMD,
+                "scxctl",
                 "start",
                 "-s",
                 self._cfg.scx_scheduler,
@@ -58,11 +55,8 @@ class SCXScheduler(_BaseFeature):
 
     def _do_disable(self, output: str) -> FeatureResult:
         status = self._status()
-        if self._scx_is_stopped(status):
+        if not status or "no scx scheduler running" in status:
             return FeatureResult.noop()
-        if self._scxctl.run_ok([self._CMD, "stop"]):
+        if self._scxctl.run_ok(["scxctl", "stop"]):
             return FeatureResult.did_change("stopped")
         return FeatureResult.error("stop failed")
-
-    def _scx_is_stopped(self, status: str) -> bool:
-        return not status or "no scx scheduler running" in status

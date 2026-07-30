@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import collections.abc
 import logging
-from typing import cast
 
 from gamemode.config import Config
-from gamemode.feature import Feature, _BaseFeature
+from gamemode.feature import _BaseFeature, log_feature_result
 from gamemode.features.audio_priority import AudioPriority
 from gamemode.features.power_profile import PowerProfile
 from gamemode.features.screen_inhibit import ScreenInhibit
@@ -18,8 +17,8 @@ from gamemode.runner import Runner
 
 def collect_features(
     config: Config, runner: Runner, log: logging.Logger
-) -> collections.abc.Sequence[tuple[str, Feature]]:
-    result: list[tuple[str, Feature]] = []
+) -> collections.abc.Sequence[tuple[str, _BaseFeature]]:
+    result: list[tuple[str, _BaseFeature]] = []
     for name, feat in [
         ("tuned", PowerProfile(config, runner, log)),
         ("vrr", VRR(config, runner, log)),
@@ -28,12 +27,12 @@ def collect_features(
         ("inhibit", ScreenInhibit(config, runner, log)),
     ]:
         if name in config.toggle_features:
-            result.append((name, cast(Feature, feat)))
+            result.append((name, feat))
     return result
 
 
 def _apply_features(
-    features: collections.abc.Sequence[tuple[str, Feature]],
+    features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     output: str,
     log: logging.Logger,
     method: str,
@@ -41,11 +40,11 @@ def _apply_features(
     log.debug("%sing features for output: %s", method.capitalize(), output)
     for name, feat in features:
         result = getattr(feat, method)(output)
-        _BaseFeature._log_result(name, result, log)
+        log_feature_result(name, result, log)
 
 
 def features_enable(
-    features: collections.abc.Sequence[tuple[str, Feature]],
+    features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     output: str,
     log: logging.Logger,
 ) -> None:
@@ -53,7 +52,7 @@ def features_enable(
 
 
 def features_disable(
-    features: collections.abc.Sequence[tuple[str, Feature]],
+    features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     output: str,
     log: logging.Logger,
 ) -> None:

@@ -29,7 +29,7 @@ graph LR
     end
 
     subgraph protocol["Protocol"]
-        feature[feature.py<br/>FeatureResult, Feature, _BaseFeature]
+        feature[feature.py<br/>FeatureResult, _BaseFeature]
         dependencies[dependencies.py]
     end
 
@@ -150,7 +150,7 @@ graph LR
 
 | Module       | Purpose                                                                                                                                                                                                                                                                                              |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `feature.py` | Defines `Feature` protocol, `CommandWrapper` and `WrapperFactory` type aliases. Provides `_BaseFeature` with gating (`_gate`), guarded execution (`_guarded`), result logging (`_log_result`), and `make_checked_cmd` helper for creating `CheckedCommandRunner` instances bound to the base runner. |
+| `feature.py` | Defines `FeatureResult`, `CommandWrapper` and `WrapperFactory` type aliases. Provides `_BaseFeature` with `make_checked_cmd` helper for creating `CheckedCommandRunner` instances bound to the base runner, plus the `log_feature_result` module-level function. |
 
 ### Feature Implementations (Package)
 

@@ -90,10 +90,6 @@ class WrapperChain:
     def __init__(self) -> None:
         self._wrappers: list[CommandWrapper] = []
 
-    def add(self, wrapper: CommandWrapper | None) -> None:
-        if wrapper is not None:
-            self._wrappers.append(wrapper)
-
     def add_factory(
         self,
         factory: WrapperFactory,

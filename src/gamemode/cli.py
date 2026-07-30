@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = Config()
     debug = os.environ.get("DEBUG", "") in ("1", "true", "yes")
-    log = setup_logging(config, to_file=False, debug=debug)
+    log = setup_logging(config, to_file=debug, debug=debug)
     mode, command = cli_parse(argv)
     if mode is None:
         return 1
@@ -149,9 +149,6 @@ def main(argv: list[str] | None = None) -> int:
     if not validate_deps(config, runner, log):
         return 1
 
-    if mode not in ("on", "off", "status", "wrapper"):
-        log.error("Unknown subcommand: '%s'", mode)
-        return 1
     return {
         "on": lambda: action_on(config, runner, log, debug=debug),
         "off": lambda: action_off(config, runner, log, debug=debug),
