@@ -76,6 +76,9 @@ class Config:
     enable_inhibit: bool = field(
         default_factory=lambda: _env_bool("ENABLE_SCREEN_KEEP_AWAKE", True)
     )
+    enable_sleep_inhibit: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_SLEEP_INHIBIT", True)
+    )
     enable_audio: bool = field(
         default_factory=lambda: _env_bool("ENABLE_AUDIO_PRIORITY_BOOST", False)
     )

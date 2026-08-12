@@ -64,6 +64,7 @@ def _cfg(**overrides: Any) -> Config:
         "enable_vrr": False,
         "enable_tuned": False,
         "enable_inhibit": False,
+        "enable_sleep_inhibit": False,
         "enable_audio": False,
         "enable_steam": False,
         "enable_systemd_run": False,
@@ -105,14 +106,15 @@ def mock_collect_features(features):
     return patch.object(gamemode_actions, "collect_features", return_value=features)
 
 
-def _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit):
+def _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit, enable_sleep_inhibit):
     """Build a FakeRunner with dependency resolutions for the given feature toggles."""
     r = FakeRunner(logger)
     r.when_resolved("scxctl", "/usr/bin/scxctl" if enable_scx else None)
     r.when_resolved("jq", "/usr/bin/jq" if enable_vrr else None)
     r.when_resolved("tuned-adm", "/usr/bin/tuned-adm" if enable_tuned else None)
     r.when_resolved(
-        "systemd-inhibit", "/usr/bin/systemd-inhibit" if enable_inhibit else None
+        "systemd-inhibit",
+        "/usr/bin/systemd-inhibit" if enable_sleep_inhibit else None,
     )
     r.when_resolved("dbus-send", "/usr/bin/dbus-send" if enable_inhibit else None)
     return r

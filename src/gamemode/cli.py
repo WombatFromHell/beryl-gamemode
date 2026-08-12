@@ -53,6 +53,7 @@ ENVIRONMENT:
     ENABLE_SCX_SCHEDULER     Enable SCX scheduler feature (default: true)
     ENABLE_PERFORMANCE_MODE  Enable tuned power profile (default: false)
     ENABLE_SCREEN_KEEP_AWAKE Enable screen inhibit (default: true)
+    ENABLE_SLEEP_INHIBIT     Enable per-process systemd-inhibit (sleep) wrapper (default: true)
     ENABLE_IDLE_MONITOR      Enable KB&M idle monitor (default: auto if both IDLE_CMD and ACTIVE_CMD are set)
     ENABLE_AUDIO_PRIORITY_BOOST  Enable PulseAudio low-latency (default: false)
     ENABLE_STEAM_ENV         Enable Steam env wrapper (default: true)

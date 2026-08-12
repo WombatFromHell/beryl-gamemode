@@ -40,7 +40,7 @@ configure: clean
 	uv venv --clear
 	uv sync --frozen
 
-build: clean
+build: configure
 	@echo "Building $(ARTIFACT) (version $(VERSION))"
 	@echo "SOURCE_DATE_EPOCH: $(SOURCE_DATE_EPOCH) ($(TIMESTAMP))"
 	mkdir -p $(BUILD_DIR)
@@ -83,7 +83,7 @@ build: clean
 	@echo "Built: $(OUT)"
 	@echo "SHA256: $$(cat $(OUT).sha256sum | cut -d' ' -f1)"
 
-install: $(OUT)
+install: build
 	@cd $(BUILD_DIR) && sha256sum -c $(ARTIFACT).sha256sum
 	@if [ -d "$$HOME/.local/bin/scripts/" ]; then \
 		INSTALL_DIR="$$HOME/.local/bin/scripts"; \

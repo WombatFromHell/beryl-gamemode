@@ -618,21 +618,27 @@ class TestSteamWrapperPath:
 
 class TestInhibitWrapperFactory:
     def test_returns_none_when_disabled(self, tmp_path, logger):
-        """inhibit_wrapper_factory returns None when inhibit is disabled."""
-        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=False)
+        """inhibit_wrapper_factory returns None when sleep inhibit is disabled."""
+        cfg = _cfg(
+            runtime_dir=str(tmp_path),
+            enable_inhibit=True,
+            enable_sleep_inhibit=False,
+        )
         result = inhibit_wrapper_factory(cfg, Runner(logger), logger)
         assert result is None
 
     def test_returns_none_when_systemd_inhibit_missing(self, tmp_path, logger):
         """inhibit_wrapper_factory returns None when systemd-inhibit is not found."""
-        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=True)
+        cfg = _cfg(
+            runtime_dir=str(tmp_path), enable_sleep_inhibit=True
+        )
         r = FakeRunner(logger)
         result = inhibit_wrapper_factory(cfg, r, logger)
         assert result is None
 
     def test_returns_wrapper_when_enabled(self, tmp_path, logger):
         """inhibit_wrapper_factory returns a wrapper when enabled and systemd-inhibit exists."""
-        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=True)
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_sleep_inhibit=True)
         r = FakeRunner(logger)
         r.when_resolved("systemd-inhibit", "/usr/bin/systemd-inhibit")
         wrapper = inhibit_wrapper_factory(cfg, r, logger)

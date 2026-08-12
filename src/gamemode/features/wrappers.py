@@ -55,7 +55,7 @@ def inhibit_wrapper_factory(
     config: Config, runner: Runner, log: logging.Logger
 ) -> CommandWrapper | None:
     inhibit = runner.resolve("systemd-inhibit")
-    if not config.enable_inhibit or inhibit is None:
+    if not config.enable_sleep_inhibit or inhibit is None:
         return None
 
     def wrapper(argv: list[str]) -> list[str]:

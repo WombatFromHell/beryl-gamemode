@@ -10,10 +10,10 @@ from gamemode.dependencies import validate_deps
 
 class TestValidateDeps:
     @pytest.mark.parametrize(
-        "enable_scx,enable_vrr,enable_tuned,enable_inhibit",
+        "enable_scx,enable_vrr,enable_tuned,enable_inhibit,enable_sleep_inhibit",
         [
-            (False, False, False, False),
-            (True, True, True, True),
+            (False, False, False, False, False),
+            (True, True, True, True, True),
         ],
     )
     def test_dep_checks(
@@ -24,6 +24,7 @@ class TestValidateDeps:
         enable_vrr,
         enable_tuned,
         enable_inhibit,
+        enable_sleep_inhibit,
     ):
         cfg = _cfg(
             runtime_dir=str(tmp_path),
@@ -31,16 +32,25 @@ class TestValidateDeps:
             enable_vrr=enable_vrr,
             enable_tuned=enable_tuned,
             enable_inhibit=enable_inhibit,
+            enable_sleep_inhibit=enable_sleep_inhibit,
         )
-        r = _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit)
+        r = _dep_runner(
+            logger,
+            enable_scx,
+            enable_vrr,
+            enable_tuned,
+            enable_inhibit,
+            enable_sleep_inhibit,
+        )
         ok = validate_deps(cfg, r, logger)
-        if enable_scx or enable_vrr or enable_tuned or enable_inhibit:
+        if enable_scx or enable_vrr or enable_tuned or enable_inhibit or enable_sleep_inhibit:
             all_present = all(
                 [
                     not enable_scx or r.resolve("scxctl") is not None,
                     not enable_vrr or r.resolve("jq") is not None,
                     not enable_tuned or r.resolve("tuned-adm") is not None,
-                    not enable_inhibit or r.resolve("systemd-inhibit") is not None,
+                    not enable_sleep_inhibit
+                    or r.resolve("systemd-inhibit") is not None,
                     not enable_inhibit or r.resolve("dbus-send") is not None,
                 ]
             )
@@ -49,12 +59,13 @@ class TestValidateDeps:
             assert ok is True
 
     @pytest.mark.parametrize(
-        "enable_scx,enable_vrr,enable_tuned,enable_inhibit",
+        "enable_scx,enable_vrr,enable_tuned,enable_inhibit,enable_sleep_inhibit",
         [
-            (True, False, False, False),
-            (False, True, False, False),
-            (False, False, True, False),
-            (False, False, False, True),
+            (True, False, False, False, False),
+            (False, True, False, False, False),
+            (False, False, True, False, False),
+            (False, False, False, True, False),
+            (False, False, False, False, True),
         ],
     )
     def test_single_feature_enabled_all_deps_present(
@@ -65,6 +76,7 @@ class TestValidateDeps:
         enable_vrr,
         enable_tuned,
         enable_inhibit,
+        enable_sleep_inhibit,
     ):
         """Each feature individually enabled with all deps present returns True."""
         cfg = _cfg(
@@ -73,8 +85,16 @@ class TestValidateDeps:
             enable_vrr=enable_vrr,
             enable_tuned=enable_tuned,
             enable_inhibit=enable_inhibit,
+            enable_sleep_inhibit=enable_sleep_inhibit,
         )
-        r = _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit)
+        r = _dep_runner(
+            logger,
+            enable_scx,
+            enable_vrr,
+            enable_tuned,
+            enable_inhibit,
+            enable_sleep_inhibit,
+        )
         ok = validate_deps(cfg, r, logger)
         assert ok is True
 

@@ -11,7 +11,7 @@ from gamemode.runner import Runner
 def validate_deps(config: Config, runner: Runner, log: logging.Logger) -> bool:
     checks: dict[str, bool] = {
         "tuned-adm": config.enable_tuned,
-        "systemd-inhibit": config.enable_inhibit,
+        "systemd-inhibit": config.enable_sleep_inhibit,
         "dbus-send": config.enable_inhibit,
         "scxctl": config.enable_scx,
         "jq": config.enable_vrr,
