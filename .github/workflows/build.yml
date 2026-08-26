@@ -11,24 +11,17 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # Ensures full git history for Nix flake inputs
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-          # Enable flakes and nix-command for modern Nix usage
-          extra_nix_config: |
-            experimental-features = nix-command flakes
+      - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build Release Artifact
-        run: |
-          nix develop -c make ci-nix
+        run: nix develop -c make ci-nix
 
       # only expose CI artifacts on workflow_dispatch
       - name: Upload Workflow Artifact
