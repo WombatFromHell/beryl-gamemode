@@ -154,13 +154,13 @@ graph LR
 
 ### Feature Implementations (Package)
 
-| Module                       | Purpose                                                                                                                                                                                                                                                                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `features/vrr.py`            | **VRR** — niri VRR toggle via `niri msg`; queries display capability via `jq`, toggles via `niri msg` IPC                                                                                                                                                                                                                            |
-| `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                        |
-| `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                           |
-| `features/audio_priority.py` | **AudioPriority** — sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode; writes to env file and clears on disable                                                                                                                                                                                                              |
-| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver); checks display manager type via `compositor.py`. Includes evdev-based KB&M idle monitor (`_IdleMonitorThread`) that fires external commands on idle/active transitions independently of DMS.                                                          |
+| Module                       | Purpose                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `features/vrr.py`            | **VRR** — niri VRR toggle via `niri msg`; queries display capability via `jq`, toggles via `niri msg` IPC                                                                                                                                                                                                                                                                               |
+| `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                                                                           |
+| `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                                                                              |
+| `features/audio_priority.py` | **AudioPriority** — sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode; writes to env file and clears on disable                                                                                                                                                                                                                                                                 |
+| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver); checks display manager type via `compositor.py`. Includes evdev-based KB&M idle monitor (`_IdleMonitorThread`) that fires external commands on idle/active transitions independently of DMS.                                                                                                             |
 | `features/wrappers.py`       | **Wrapper factories**: `steam_wrapper_factory` (prepends Steam env script), `inhibit_wrapper_factory` (adds `systemd-inhibit --what=idle:sleep`; gated by `ENABLE_SLEEP_INHIBIT`), `systemd_run_wrapper_factory` (prepends `systemd-run`). **`WrapperChain`** — chains command wrappers sequentially. **`SystemdRun`** — prepends `systemd-run` to command argv (not a toggle feature). |
 
 ### Orchestration
@@ -321,15 +321,15 @@ graph TD
 
 ## Features
 
-| Feature       | Toggle | Wrapper | Description                                                                          |
-| ------------- | ------ | ------- | ------------------------------------------------------------------------------------ |
-| `vrr`         | ✓      |         | Toggles VRR on a specific display output via niri IPC                                |
-| `scx`         | ✓      |         | Starts/stops the SCX scheduler (default: `lavd` in `gaming` mode)                    |
-| `tuned`       | ✓      |         | Switches system power profile via tuned daemon                                       |
-| `audio`       | ✓      |         | Sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode                            |
+| Feature       | Toggle | Wrapper | Description                                                                                                            |
+| ------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `vrr`         | ✓      |         | Toggles VRR on a specific display output via niri IPC                                                                  |
+| `scx`         | ✓      |         | Starts/stops the SCX scheduler (default: `lavd` in `gaming` mode)                                                      |
+| `tuned`       | ✓      |         | Switches system power profile via tuned daemon                                                                         |
+| `audio`       | ✓      |         | Sets `PULSE_LATENCY_MSEC` for PulseAudio low-latency mode                                                              |
 | `inhibit`     | ✓      | ✓       | Prevents screen blanking/lock via DMS (niri) or DBus; wrapper adds `systemd-inhibit` (gated by `ENABLE_SLEEP_INHIBIT`) |
-| `steam`       |        | ✓       | Pre-pends Steam environment script to command                                        |
-| `systemd_run` |        | ✓       | Wraps command with `systemd-run` for resource control (CPU/IO weight)                |
+| `steam`       |        | ✓       | Pre-pends Steam environment script to command                                                                          |
+| `systemd_run` |        | ✓       | Wraps command with `systemd-run` for resource control (CPU/IO weight)                                                  |
 
 ## External Dependencies (Standard Library Only)
 

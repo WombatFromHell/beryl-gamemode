@@ -106,7 +106,9 @@ def mock_collect_features(features):
     return patch.object(gamemode_actions, "collect_features", return_value=features)
 
 
-def _dep_runner(logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit, enable_sleep_inhibit):
+def _dep_runner(
+    logger, enable_scx, enable_vrr, enable_tuned, enable_inhibit, enable_sleep_inhibit
+):
     """Build a FakeRunner with dependency resolutions for the given feature toggles."""
     r = FakeRunner(logger)
     r.when_resolved("scxctl", "/usr/bin/scxctl" if enable_scx else None)
@@ -217,7 +219,13 @@ def _make_feature(
 def _vrr_maps(vrr_supported=True, vrr_enabled=False, output="DP-1"):
     """Return (resolve_map, run_map, pipe_map) for a VRR test scenario."""
     niri_json = json.dumps(
-        {output: {"vrr_supported": vrr_supported, "vrr_enabled": vrr_enabled}}
+        {
+            output: {
+                "vrr_supported": vrr_supported,
+                "vrr_enabled": vrr_enabled,
+                "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+            }
+        }
     )
     resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
     run_map = {("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json)}

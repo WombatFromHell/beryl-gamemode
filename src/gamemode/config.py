@@ -126,7 +126,7 @@ class Config:
         )
     )
     vrr_output_default: str = field(
-        default_factory=lambda: os.environ.get("VRR_OUTPUT", "DP-1")
+        default_factory=lambda: os.environ.get("VRR_OUTPUTS", "DP-1")
     )
     systemd_run_args: list[str] = field(
         default_factory=lambda: (

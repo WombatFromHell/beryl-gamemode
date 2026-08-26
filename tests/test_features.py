@@ -1,5 +1,6 @@
 """Tests for feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit, wrappers."""
 
+import json
 import logging
 import os
 import struct
@@ -117,6 +118,281 @@ class TestVRR:
         )
         result = vrr.enable("DP-1")
         assert result.skipped is True
+
+    def test_acts_on_valid_skips_invalid(self, feature_builder, niri_session):
+        niri_json = json.dumps(
+            {
+                "DP-9": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": None,
+                },
+                "HDMI-A-1": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                },
+            }
+        )
+        resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
+        run_map = {
+            ("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json),
+            ("niri", "msg", "output", "HDMI-A-1", "vrr", "on"): _cp(),
+        }
+        pipe_map = {
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                ".[$o].vrr_supported // true",
+            ): _cp(stdout="true"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                (
+                    'if .[$o].vrr_enabled == true then "true" '
+                    'elif .[$o].vrr_enabled == false then "false" '
+                    'else "" end'
+                ),
+            ): _cp(stdout="false"),
+        }
+        vrr, fake = feature_builder(
+            VRR,
+            enable_vrr=True,
+            resolve_map=resolve_map,
+            run_map=run_map,
+            pipe_map=pipe_map,
+        )
+        result = vrr.enable("DP-9,HDMI-A-1")
+        assert result.changed is True
+        assert (
+            "run",
+            ["niri", "msg", "output", "HDMI-A-1", "vrr", "on"],
+        ) in fake.calls
+
+    def test_select_none_skips(self, feature_builder, niri_session):
+        niri_json = json.dumps(
+            {
+                "DP-9": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": None,
+                }
+            }
+        )
+        resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
+        run_map = {("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json)}
+        vrr, _ = feature_builder(
+            VRR,
+            enable_vrr=True,
+            resolve_map=resolve_map,
+            run_map=run_map,
+            pipe_map={},
+        )
+        result = vrr.enable("DP-9,HDMI-A-2")
+        assert result.skipped is True
+
+    def test_enable_all_valid_outputs(self, feature_builder, niri_session):
+        niri_json = json.dumps(
+            {
+                "HDMI-A-1": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                },
+                "DP-4": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 3440, "height": 1440},
+                },
+            }
+        )
+        resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
+        run_map = {
+            ("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json),
+            ("niri", "msg", "output", "HDMI-A-1", "vrr", "on"): _cp(),
+            ("niri", "msg", "output", "DP-4", "vrr", "on"): _cp(),
+        }
+        pipe_map = {
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                ".[$o].vrr_supported // true",
+            ): _cp(stdout="true"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                (
+                    'if .[$o].vrr_enabled == true then "true" '
+                    'elif .[$o].vrr_enabled == false then "false" '
+                    'else "" end'
+                ),
+            ): _cp(stdout="false"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "DP-4",
+                ".[$o].vrr_supported // true",
+            ): _cp(stdout="true"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "DP-4",
+                (
+                    'if .[$o].vrr_enabled == true then "true" '
+                    'elif .[$o].vrr_enabled == false then "false" '
+                    'else "" end'
+                ),
+            ): _cp(stdout="false"),
+        }
+        vrr, fake = feature_builder(
+            VRR,
+            enable_vrr=True,
+            resolve_map=resolve_map,
+            run_map=run_map,
+            pipe_map=pipe_map,
+        )
+        result = vrr.enable("HDMI-A-1,DP-4")
+        assert result.changed is True
+        assert (
+            "run",
+            ["niri", "msg", "output", "HDMI-A-1", "vrr", "on"],
+        ) in fake.calls
+        assert (
+            "run",
+            ["niri", "msg", "output", "DP-4", "vrr", "on"],
+        ) in fake.calls
+
+    def test_enable_mixed_valid_and_not_capable(self, feature_builder, niri_session):
+        niri_json = json.dumps(
+            {
+                "HDMI-A-1": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                },
+                "DP-4": {
+                    "vrr_supported": False,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 3440, "height": 1440},
+                },
+            }
+        )
+        resolve_map = {"niri": "/usr/bin/niri", "jq": "/usr/bin/jq"}
+        run_map = {
+            ("niri", "msg", "-j", "outputs"): _cp(stdout=niri_json),
+            ("niri", "msg", "output", "HDMI-A-1", "vrr", "on"): _cp(),
+        }
+        pipe_map = {
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                ".[$o].vrr_supported // true",
+            ): _cp(stdout="true"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                (
+                    'if .[$o].vrr_enabled == true then "true" '
+                    'elif .[$o].vrr_enabled == false then "false" '
+                    'else "" end'
+                ),
+            ): _cp(stdout="false"),
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "DP-4",
+                ".[$o].vrr_supported // true",
+            ): _cp(stdout="false"),
+        }
+        vrr, fake = feature_builder(
+            VRR,
+            enable_vrr=True,
+            resolve_map=resolve_map,
+            run_map=run_map,
+            pipe_map=pipe_map,
+        )
+        result = vrr.enable("HDMI-A-1,DP-4")
+        assert result.changed is True
+        assert (
+            "run",
+            ["niri", "msg", "output", "HDMI-A-1", "vrr", "on"],
+        ) in fake.calls
+
+    def test_env_vrr_outputs_drives_enablement(self, monkeypatch, fake_runner, logger):
+        monkeypatch.setenv("VRR_OUTPUTS", "DP-9,HDMI-A-1")
+        monkeypatch.setattr("gamemode.features.vrr.compositor_is_niri", lambda: True)
+        from gamemode.config import Config
+
+        cfg = Config(runtime_dir="/tmp")
+        niri_json = json.dumps(
+            {
+                "DP-9": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": None,
+                },
+                "HDMI-A-1": {
+                    "vrr_supported": True,
+                    "vrr_enabled": False,
+                    "logical": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                },
+            }
+        )
+        fake_runner.when_resolved("niri", "/usr/bin/niri").when_resolved(
+            "jq", "/usr/bin/jq"
+        )
+        fake_runner.when_run(("niri", "msg", "-j", "outputs"), stdout=niri_json)
+        fake_runner.when_run(("niri", "msg", "output", "HDMI-A-1", "vrr", "on"))
+        fake_runner.when_pipe(
+            ("jq", "-r", "--arg", "o", "HDMI-A-1", ".[$o].vrr_supported // true"),
+            stdout="true",
+        )
+        fake_runner.when_pipe(
+            (
+                "jq",
+                "-r",
+                "--arg",
+                "o",
+                "HDMI-A-1",
+                (
+                    'if .[$o].vrr_enabled == true then "true" '
+                    'elif .[$o].vrr_enabled == false then "false" '
+                    'else "" end'
+                ),
+            ),
+            stdout="false",
+        )
+        vrr = VRR(cfg, fake_runner, logger)
+        result = vrr.enable(cfg.vrr_output_default)
+        assert result.changed is True
+        assert (
+            "run",
+            ["niri", "msg", "output", "HDMI-A-1", "vrr", "on"],
+        ) in fake_runner.calls
 
 
 class TestPowerProfile:
@@ -629,9 +905,7 @@ class TestInhibitWrapperFactory:
 
     def test_returns_none_when_systemd_inhibit_missing(self, tmp_path, logger):
         """inhibit_wrapper_factory returns None when systemd-inhibit is not found."""
-        cfg = _cfg(
-            runtime_dir=str(tmp_path), enable_sleep_inhibit=True
-        )
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_sleep_inhibit=True)
         r = FakeRunner(logger)
         result = inhibit_wrapper_factory(cfg, r, logger)
         assert result is None

@@ -43,7 +43,13 @@ class TestValidateDeps:
             enable_sleep_inhibit,
         )
         ok = validate_deps(cfg, r, logger)
-        if enable_scx or enable_vrr or enable_tuned or enable_inhibit or enable_sleep_inhibit:
+        if (
+            enable_scx
+            or enable_vrr
+            or enable_tuned
+            or enable_inhibit
+            or enable_sleep_inhibit
+        ):
             all_present = all(
                 [
                     not enable_scx or r.resolve("scxctl") is not None,

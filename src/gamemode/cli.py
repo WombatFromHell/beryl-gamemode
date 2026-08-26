@@ -60,8 +60,9 @@ ENVIRONMENT:
     ENABLE_SYSTEMD_RUN       Enable systemd-run wrapper (default: true)
 
   VRR:
-    VRR_OUTPUT          Target display output (default: DP-1)
-    NIRI_OUTPUT_NAME    Override target output (falls back to VRR_OUTPUT)
+    VRR_OUTPUTS         Comma-delimited candidate outputs; all connected AND
+                        enabled are enabled (default: DP-1)
+    NIRI_OUTPUT_NAME    Override target output (falls back to VRR_OUTPUTS)
 
   SCX Scheduler:
     SCX_SCHEDULER       Scheduler name (default: lavd)

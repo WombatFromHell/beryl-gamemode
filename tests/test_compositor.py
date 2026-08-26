@@ -70,3 +70,10 @@ class TestOutputResolve:
     def test_env_override(self, tmp_path_cfg, monkeypatch):
         monkeypatch.setenv("NIRI_OUTPUT_NAME", "HDMI-A-1")
         assert output_resolve(tmp_path_cfg) == "HDMI-A-1"
+
+    def test_env_vrr_outputs(self, monkeypatch):
+        monkeypatch.setenv("VRR_OUTPUTS", "HDMI-A-1,DP-4")
+        monkeypatch.delenv("NIRI_OUTPUT_NAME", raising=False)
+        from gamemode.config import Config
+
+        assert output_resolve(Config(runtime_dir="/tmp")) == "HDMI-A-1,DP-4"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from gamemode.compositor import compositor_is_niri
@@ -26,6 +27,38 @@ class VRR(_BaseFeature):
     @property
     def _feature_enabled(self) -> bool:
         return self._cfg.enable_vrr
+
+    def _outputs_json(self) -> dict | None:
+        result = self._run.capture(["niri", "msg", "-j", "outputs"])
+        if result.returncode != 0 or not result.stdout:
+            return None
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+
+    def _valid_outputs(self, candidates: str) -> list[str]:
+        # ponytail: single niri capture per call; no cross enable/disable cache.
+        # present in map == connected; logical != null == enabled.
+        data = self._outputs_json()
+        if data is None:
+            return []
+        return [
+            name
+            for name in (c.strip() for c in candidates.split(",") if c.strip())
+            if (info := data.get(name)) and info.get("logical") is not None
+        ]
+
+    def _aggregate(self, results: list[FeatureResult]) -> FeatureResult:
+        errors = [r for r in results if not r.ok]
+        if errors:
+            return FeatureResult.error("; ".join(r.detail for r in errors))
+        changed = [r for r in results if r.changed]
+        if changed:
+            return FeatureResult.did_change("; ".join(r.detail for r in changed))
+        if all(r.skipped for r in results):
+            return FeatureResult.skip("; ".join(r.detail for r in results if r.skipped))
+        return FeatureResult.noop()
 
     def _build_jq_argv(self, jq_expr: str, jq_args: dict[str, str] | None) -> list[str]:
         argv = ["jq", "-r"]
@@ -64,12 +97,18 @@ class VRR(_BaseFeature):
     def _do_enable(self, output: str) -> FeatureResult:
         if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
-        return self._vrr_toggle(output, "on")
+        targets = self._valid_outputs(output)
+        if not targets:
+            return FeatureResult.skip("no connected+enabled output in VRR_OUTPUTS list")
+        return self._aggregate([self._vrr_toggle(t, "on") for t in targets])
 
     def _do_disable(self, output: str) -> FeatureResult:
         if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
-        return self._vrr_toggle(output, "off")
+        targets = self._valid_outputs(output)
+        if not targets:
+            return FeatureResult.skip("no connected+enabled output in VRR_OUTPUTS list")
+        return self._aggregate([self._vrr_toggle(t, "off") for t in targets])
 
     def _vrr_toggle(self, output: str, desired: str) -> FeatureResult:
         current = self._current(output)
