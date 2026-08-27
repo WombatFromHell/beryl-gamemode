@@ -40,8 +40,8 @@ class PowerProfile(_BaseFeature):
         self._log.error("failed to set %s", desired)
         return FeatureResult.error(f"failed to set {desired}")
 
-    def _do_enable(self, output: str) -> FeatureResult:
+    def _do_enable(self) -> FeatureResult:
         return self._profile_set(self._cfg.profile_game)
 
-    def _do_disable(self, output: str) -> FeatureResult:
+    def _do_disable(self) -> FeatureResult:
         return self._profile_set(self._cfg.profile_desktop)

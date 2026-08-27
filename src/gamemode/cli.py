@@ -60,9 +60,9 @@ ENVIRONMENT:
     ENABLE_SYSTEMD_RUN       Enable systemd-run wrapper (default: true)
 
   VRR:
-    VRR_OUTPUTS         Comma-delimited candidate outputs; all connected AND
-                        enabled are enabled (default: DP-1)
-    NIRI_OUTPUT_NAME    Override target output (falls back to VRR_OUTPUTS)
+    VRR_OUTPUTS         Comma-delimited candidate outputs; when set, only these
+                        connected AND enabled outputs get VRR. When unset, VRR is
+                        auto-enabled on ALL connected, enabled, VRR-capable outputs.
 
   SCX Scheduler:
     SCX_SCHEDULER       Scheduler name (default: lavd)
@@ -179,8 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     _warn_idle_missing_pair(config, log, mode)
 
     return {
-        "on": lambda: action_on(config, runner, log, debug=debug),
-        "off": lambda: action_off(config, runner, log, debug=debug),
+        "on": lambda: action_on(config, runner, log),
+        "off": lambda: action_off(config, runner, log),
         "status": lambda: action_status(config),
-        "wrapper": lambda: action_wrapper(config, runner, log, command, debug=debug),
+        "wrapper": lambda: action_wrapper(config, runner, log, command),
     }[mode]()

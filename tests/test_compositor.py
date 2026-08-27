@@ -65,7 +65,8 @@ class TestCompositorDetection:
 class TestOutputResolve:
     def test_default(self, tmp_path_cfg, monkeypatch):
         monkeypatch.delenv("NIRI_OUTPUT_NAME", raising=False)
-        assert output_resolve(tmp_path_cfg) == "DP-1"
+        monkeypatch.delenv("VRR_OUTPUTS", raising=False)
+        assert output_resolve(tmp_path_cfg) == ""
 
     def test_env_override(self, tmp_path_cfg, monkeypatch):
         monkeypatch.setenv("NIRI_OUTPUT_NAME", "HDMI-A-1")

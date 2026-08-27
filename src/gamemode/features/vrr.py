@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from gamemode.compositor import compositor_is_niri
 from gamemode.config import Config
@@ -48,6 +49,17 @@ class VRR(_BaseFeature):
             for name in (c.strip() for c in candidates.split(",") if c.strip())
             if (info := data.get(name)) and info.get("logical") is not None
         ]
+
+    def _all_enabled_outputs(self) -> list[str]:
+        data = self._outputs_json()
+        if data is None:
+            return []
+        return [name for name, info in data.items() if info.get("logical") is not None]
+
+    def _targets(self) -> list[str]:
+        if env := os.environ.get("VRR_OUTPUTS"):
+            return self._valid_outputs(env)
+        return self._all_enabled_outputs()
 
     def _aggregate(self, results: list[FeatureResult]) -> FeatureResult:
         errors = [r for r in results if not r.ok]
@@ -94,20 +106,20 @@ class VRR(_BaseFeature):
             return False
         return self._niri_cmd.run_ok(["niri", "msg", "output", output, "vrr", state])
 
-    def _do_enable(self, output: str) -> FeatureResult:
+    def _do_enable(self) -> FeatureResult:
         if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
-        targets = self._valid_outputs(output)
+        targets = self._targets()
         if not targets:
-            return FeatureResult.skip("no connected+enabled output in VRR_OUTPUTS list")
+            return FeatureResult.skip("no connected+enabled output")
         return self._aggregate([self._vrr_toggle(t, "on") for t in targets])
 
-    def _do_disable(self, output: str) -> FeatureResult:
+    def _do_disable(self) -> FeatureResult:
         if not compositor_is_niri():
             return FeatureResult.skip("niri not running")
-        targets = self._valid_outputs(output)
+        targets = self._targets()
         if not targets:
-            return FeatureResult.skip("no connected+enabled output in VRR_OUTPUTS list")
+            return FeatureResult.skip("no connected+enabled output")
         return self._aggregate([self._vrr_toggle(t, "off") for t in targets])
 
     def _vrr_toggle(self, output: str, desired: str) -> FeatureResult:

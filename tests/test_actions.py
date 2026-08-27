@@ -39,7 +39,7 @@ class TestActionWrapper:
         ):
             retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
         assert retcode == 0
-        assert feature_a.disable_calls == [cfg.vrr_output_default]
+        assert feature_a.disable_calls == [True]
         assert state.mode == ""
 
     @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
@@ -81,11 +81,11 @@ class RecordFeature:
     def __init__(self):
         self.en = []
         self.dis = []
-    def enable(self, output):
-        self.en.append(output)
+    def enable(self):
+        self.en.append(True)
         return FeatureResult.did_change("en")
-    def disable(self, output):
-        self.dis.append(output)
+    def disable(self):
+        self.dis.append(True)
         with open(state_file, "w") as f:
             json.dump({{"en": self.en, "dis": self.dis}}, f)
         return FeatureResult.did_change("dis")
@@ -118,7 +118,7 @@ with patch.object(actions, "collect_features", return_value=features):
             f"Child did not write feature state (rc={child.returncode})"
         )
         result = json.loads(state_file.read_text())
-        assert result["dis"] == ["DP-1"], f"Cleanup did not run: {result}"
+        assert result["dis"] == [True], f"Cleanup did not run: {result}"
         assert StateManager(cfg).mode == "", "State not cleared"
 
     def test_concurrent_wrapper_skips(self, tmp_path_cfg, logger, held_lock):
@@ -148,7 +148,7 @@ with patch.object(actions, "collect_features", return_value=features):
         ):
             retcode = action_wrapper(cfg, runner, logger, ["/bin/false"])
         assert retcode == 1
-        assert features[0][1].disable_calls == [cfg.vrr_output_default]
+        assert features[0][1].disable_calls == [True]
         assert state.mode == ""
 
     def test_cleanup_runs_even_on_oserror(self, tmp_path, logger):
@@ -165,7 +165,7 @@ with patch.object(actions, "collect_features", return_value=features):
         ):
             retcode = action_wrapper(cfg, runner, logger, ["/nonexistent/bin/cmd"])
         assert retcode == 1
-        assert feature_a.disable_calls == [cfg.vrr_output_default]
+        assert feature_a.disable_calls == [True]
         assert state.mode == ""
 
 
@@ -263,14 +263,14 @@ class RecordFeature:
     def __init__(self):
         self.en = []
         self.dis = []
-    def enable(self, output):
-        self.en.append(output)
+    def enable(self):
+        self.en.append(True)
         with open({str(ready_file)!r}, "w") as f:
             f.write("ready")
         time.sleep(0.1)
         return FeatureResult.did_change("en")
-    def disable(self, output):
-        self.dis.append(output)
+    def disable(self):
+        self.dis.append(True)
         return FeatureResult.did_change("dis")
 
 feat = RecordFeature()
@@ -312,7 +312,7 @@ class TestActionOn:
             ret = action_on(cfg, runner, logger)
         assert ret == 0
         assert state.is_active
-        assert ff.enable_calls == [cfg.vrr_output_default]
+        assert ff.enable_calls == [True]
 
     def test_action_on_idempotent(self, tmp_path, logger):
         """action_on when already active should return 0 without re-enabling."""
@@ -358,7 +358,7 @@ class TestActionOff:
         with mock_collect_features(features):
             ret = action_off(cfg, runner, logger)
         assert ret == 0
-        assert ff.disable_calls == [cfg.vrr_output_default]
+        assert ff.disable_calls == [True]
         assert state.mode == ""
 
 
@@ -387,12 +387,10 @@ class TestCleanupClosure:
         state.init()
         ff = FakeFeature("test")
         features = [("test", ff)]
-        cleanup = gamemode_actions._build_cleanup_closure(
-            features, "DP-1", logger, state
-        )
+        cleanup = gamemode_actions._build_cleanup_closure(features, logger, state)
         cleanup()
         cleanup()
-        assert ff.disable_calls == ["DP-1"]
+        assert ff.disable_calls == [True]
 
     def test_cleanup_preserve_state(self, tmp_path, logger):
         """Cleanup with preserve_state=True should not clear state."""
@@ -404,7 +402,6 @@ class TestCleanupClosure:
         features = [("test", ff)]
         cleanup = gamemode_actions._build_cleanup_closure(
             features,
-            "DP-1",
             logger,
             state,
             preserve_state=True,

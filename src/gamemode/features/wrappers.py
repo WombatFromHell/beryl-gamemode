@@ -14,25 +14,25 @@ from gamemode.feature import (
 from gamemode.runner import Runner
 
 
-class SystemdRun:
-    def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
-        self._cfg = config
-        self._run = runner
-        self._log = log
+def systemd_run_wrapper_factory(
+    config: Config, runner: Runner, log: logging.Logger
+) -> CommandWrapper | None:
+    if not config.enable_systemd_run:
+        return None
+    if not runner.require("systemd-run", "systemd-run"):
+        return None
+    if not config.systemd_run_args:
+        log.warning("ENABLE_SYSTEMD_RUN is set but SYSTEMD_RUN_ARGS is empty")
+        return None
 
-    def wrap_argv(self, argv: list[str]) -> list[str]:
-        if not self._cfg.enable_systemd_run:
-            return argv
-        if not self._run.require("systemd-run", "systemd-run"):
-            return argv
-        if not self._cfg.systemd_run_args:
-            self._log.warning("ENABLE_SYSTEMD_RUN is set but SYSTEMD_RUN_ARGS is empty")
-            return argv
-        self._log.debug(
+    def wrap(argv: list[str]) -> list[str]:
+        log.debug(
             "systemd-run wrapping: %s",
-            " ".join(self._cfg.systemd_run_args + ["--", *argv]),
+            " ".join(config.systemd_run_args + ["--", *argv]),
         )
-        return ["systemd-run", *self._cfg.systemd_run_args, "--", *argv]
+        return ["systemd-run", *config.systemd_run_args, "--", *argv]
+
+    return wrap
 
 
 def steam_wrapper_factory(
@@ -69,14 +69,6 @@ def inhibit_wrapper_factory(
         ]
 
     return wrapper
-
-
-def systemd_run_wrapper_factory(
-    config: Config, runner: Runner, log: logging.Logger
-) -> CommandWrapper | None:
-    if not config.enable_systemd_run:
-        return None
-    return SystemdRun(config, runner, log).wrap_argv
 
 
 WRAPPER_FACTORIES: dict[str, WrapperFactory] = {

@@ -41,7 +41,7 @@ class SCXScheduler(_BaseFeature):
             else FeatureResult.error("scxctl failed")
         )
 
-    def _do_enable(self, output: str) -> FeatureResult:
+    def _do_enable(self) -> FeatureResult:
         if not self._scxctl.is_available:
             return FeatureResult.skip("scxctl not found")
         status = self._status()
@@ -53,7 +53,7 @@ class SCXScheduler(_BaseFeature):
             return FeatureResult.noop()
         return self._apply()
 
-    def _do_disable(self, output: str) -> FeatureResult:
+    def _do_disable(self) -> FeatureResult:
         status = self._status()
         if not status or "no scx scheduler running" in status:
             return FeatureResult.noop()

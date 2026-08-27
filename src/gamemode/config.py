@@ -12,7 +12,7 @@ def _should_skip_line(line: str) -> bool:
     return not line or line.startswith("#") or "=" not in line
 
 
-def _parse_line(line: str) -> tuple[str, str] | None:
+def _parse_line(line: str) -> tuple[str, str]:
     """Parse a KEY=VALUE line and strip surrounding quotes from the value."""
     key, _, val = line.partition("=")
     key = key.strip()
@@ -33,11 +33,9 @@ def load_config_file(path: Path | None = None) -> None:
             line = raw_line.strip()
             if _should_skip_line(line):
                 continue
-            parsed = _parse_line(line)
-            if parsed is not None:
-                key, val = parsed
-                if key not in os.environ:
-                    os.environ[key] = val
+            key, val = _parse_line(line)
+            if key not in os.environ:
+                os.environ[key] = val
     except OSError:
         pass
 
@@ -126,7 +124,7 @@ class Config:
         )
     )
     vrr_output_default: str = field(
-        default_factory=lambda: os.environ.get("VRR_OUTPUTS", "DP-1")
+        default_factory=lambda: os.environ.get("VRR_OUTPUTS", "")
     )
     systemd_run_args: list[str] = field(
         default_factory=lambda: (

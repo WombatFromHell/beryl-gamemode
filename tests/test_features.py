@@ -24,10 +24,10 @@ from gamemode.features.scx_scheduler import SCXScheduler
 from gamemode.features.vrr import VRR
 from gamemode.features.wrappers import (
     WRAPPER_FACTORIES,
-    SystemdRun,
     WrapperChain,
     inhibit_wrapper_factory,
     steam_wrapper_factory,
+    systemd_run_wrapper_factory,
 )
 from gamemode.runner import Runner
 
@@ -36,7 +36,7 @@ class TestVRR:
     @pytest.mark.parametrize("enabled", [True, False])
     def test_skip_when_disabled(self, feature_builder, enabled):
         vrr, _ = feature_builder(VRR, enable_vrr=enabled)
-        result = vrr.enable("DP-1")
+        result = vrr.enable()
         if not enabled:
             assert result.skipped is True
 
@@ -45,7 +45,7 @@ class TestVRR:
         monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
         monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda: False)
         vrr, _ = feature_builder(VRR, enable_vrr=True)
-        result = vrr.enable("DP-1")
+        result = vrr.enable()
         assert result.skipped is True
 
     def test_enable_success(self, feature_builder, niri_session):
@@ -60,7 +60,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("DP-1")
+        result = vrr.enable()
         assert result.changed is True
         assert result.ok is True
 
@@ -73,7 +73,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("DP-1")
+        result = vrr.enable()
         assert result.changed is False
         assert result.skipped is False
 
@@ -87,7 +87,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.disable("DP-1")
+        result = vrr.disable()
         assert result.changed is True
 
     def test_disable_already_off(self, feature_builder, niri_session):
@@ -101,7 +101,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.disable("DP-1")
+        result = vrr.disable()
         assert result.changed is False
         assert result.skipped is False
 
@@ -116,7 +116,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("DP-1")
+        result = vrr.enable()
         assert result.skipped is True
 
     def test_acts_on_valid_skips_invalid(self, feature_builder, niri_session):
@@ -168,7 +168,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("DP-9,HDMI-A-1")
+        result = vrr.enable()
         assert result.changed is True
         assert (
             "run",
@@ -194,7 +194,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map={},
         )
-        result = vrr.enable("DP-9,HDMI-A-2")
+        result = vrr.enable()
         assert result.skipped is True
 
     def test_enable_all_valid_outputs(self, feature_builder, niri_session):
@@ -267,7 +267,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("HDMI-A-1,DP-4")
+        result = vrr.enable()
         assert result.changed is True
         assert (
             "run",
@@ -335,7 +335,7 @@ class TestVRR:
             run_map=run_map,
             pipe_map=pipe_map,
         )
-        result = vrr.enable("HDMI-A-1,DP-4")
+        result = vrr.enable()
         assert result.changed is True
         assert (
             "run",
@@ -387,7 +387,7 @@ class TestVRR:
             stdout="false",
         )
         vrr = VRR(cfg, fake_runner, logger)
-        result = vrr.enable(cfg.vrr_output_default)
+        result = vrr.enable()
         assert result.changed is True
         assert (
             "run",
@@ -398,7 +398,7 @@ class TestVRR:
 class TestPowerProfile:
     def test_skip_when_disabled(self, feature_builder):
         pp, _ = feature_builder(PowerProfile)
-        result = pp.enable("DP-1")
+        result = pp.enable()
         assert result.skipped is True
 
     def test_enable_changes_profile(self, feature_builder):
@@ -412,7 +412,7 @@ class TestPowerProfile:
             resolve_map=_resolve("tuned-adm"),
             run_map=run_map,
         )
-        result = pp.enable("DP-1")
+        result = pp.enable()
         assert result.changed is True
         assert (
             "run",
@@ -431,7 +431,7 @@ class TestPowerProfile:
             resolve_map=_resolve("tuned-adm"),
             run_map=run_map,
         )
-        result = pp.enable("DP-1")
+        result = pp.enable()
         assert result.changed is False
         assert result.skipped is False
 
@@ -448,7 +448,7 @@ class TestPowerProfile:
             resolve_map=_resolve("tuned-adm"),
             run_map=run_map,
         )
-        result = pp.disable("DP-1")
+        result = pp.disable()
         assert result.changed is True
         assert ("run", ["tuned-adm", "profile", "balanced-bazzite"]) in fake.calls
 
@@ -456,7 +456,7 @@ class TestPowerProfile:
 class TestSCXScheduler:
     def test_skip_when_disabled(self, feature_builder):
         scx, _ = feature_builder(SCXScheduler)
-        result = scx.enable("DP-1")
+        result = scx.enable()
         assert result.skipped is True
 
     def test_enable_starts_when_none_running(self, feature_builder):
@@ -470,7 +470,7 @@ class TestSCXScheduler:
             resolve_map=_resolve("scxctl"),
             run_map=run_map,
         )
-        result = scx.enable("DP-1")
+        result = scx.enable()
         assert result.changed is True
         assert ("run", ["scxctl", "start", "-s", "lavd", "-m", "gaming"]) in fake.calls
 
@@ -482,7 +482,7 @@ class TestSCXScheduler:
             resolve_map=_resolve("scxctl"),
             run_map=run_map,
         )
-        result = scx.enable("DP-1")
+        result = scx.enable()
         assert result.changed is False
         assert result.skipped is False
 
@@ -497,7 +497,7 @@ class TestSCXScheduler:
             resolve_map=_resolve("scxctl"),
             run_map=run_map,
         )
-        result = scx.enable("DP-1")
+        result = scx.enable()
         assert result.changed is True
         assert ("run", ["scxctl", "start", "-s", "lavd", "-m", "gaming"]) in fake.calls
 
@@ -512,7 +512,7 @@ class TestSCXScheduler:
             resolve_map=_resolve("scxctl"),
             run_map=run_map,
         )
-        result = scx.disable("DP-1")
+        result = scx.disable()
         assert result.changed is True
         assert ("run", ["scxctl", "stop"]) in fake.calls
 
@@ -524,7 +524,7 @@ class TestSCXScheduler:
             resolve_map=_resolve("scxctl"),
             run_map=run_map,
         )
-        result = scx.disable("DP-1")
+        result = scx.disable()
         assert result.changed is False
         assert result.skipped is False
 
@@ -532,27 +532,27 @@ class TestSCXScheduler:
 class TestAudioPriority:
     def test_skip_when_disabled(self, feature_builder):
         audio, _ = feature_builder(AudioPriority)
-        result = audio.enable("DP-1")
+        result = audio.enable()
         assert result.skipped is True
 
     def test_enable_sets_env(self, feature_builder, audio_env_cleanup):
         audio, _ = feature_builder(
             AudioPriority, enable_audio=True, audio_latency="120"
         )
-        result = audio.enable("DP-1")
+        result = audio.enable()
         assert result.changed is True
         assert os.environ.get("PULSE_LATENCY_MSEC") == "120"
 
     def test_enable_writes_env_file(self, feature_builder, audio_env_cleanup):
         audio, _ = feature_builder(AudioPriority, enable_audio=True, audio_latency="80")
-        audio.enable("DP-1")
+        audio.enable()
         content = audio._cfg.audio_env_file.read_text()
         assert "PULSE_LATENCY_MSEC=80" in content
 
     def test_disable_clears_env(self, feature_builder):
         audio, _ = feature_builder(AudioPriority, enable_audio=True)
         os.environ["PULSE_LATENCY_MSEC"] = "50"
-        result = audio.disable("DP-1")
+        result = audio.disable()
         assert result.changed is True
         assert "PULSE_LATENCY_MSEC" not in os.environ
 
@@ -560,19 +560,19 @@ class TestAudioPriority:
         audio, _ = feature_builder(AudioPriority, enable_audio=True)
         audio._cfg.audio_env_file.parent.mkdir(parents=True, exist_ok=True)
         audio._cfg.audio_env_file.write_text("export PULSE_LATENCY_MSEC=50\n")
-        audio.disable("DP-1")
+        audio.disable()
         assert audio._cfg.audio_env_file.exists() is False
 
     def test_disable_missing_file_is_noop(self, feature_builder):
         audio, _ = feature_builder(AudioPriority, enable_audio=True)
-        result = audio.disable("DP-1")
+        result = audio.disable()
         assert result.changed is True
 
 
 class TestScreenInhibit:
     def test_skip_when_disabled(self, feature_builder):
         inh, _ = feature_builder(ScreenInhibit)
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.skipped is True
 
     def test_enable_dms_and_screensaver_cookie(self, feature_builder, niri_session):
@@ -583,7 +583,7 @@ class TestScreenInhibit:
             resolve_map=resolve_map,
             run_map=run_map,
         )
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.changed is True
         assert "DMS inhibit enabled" in result.detail
         assert "ScreenSaver cookie acquired" in result.detail
@@ -608,7 +608,7 @@ class TestScreenInhibit:
             run_map=run_map,
         )
         inh._screensaver_cookie = 42
-        result = inh.disable("DP-1")
+        result = inh.disable()
         assert result.changed is True
         assert "DMS inhibit disabled" in result.detail
         assert "ScreenSaver cookie released" in result.detail
@@ -627,7 +627,7 @@ class TestScreenInhibit:
             resolve_map=resolve_map,
             run_map=run_map,
         )
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.changed is True
         assert "DMS inhibit" not in result.detail
         assert "ScreenSaver cookie acquired" in result.detail
@@ -644,7 +644,7 @@ class TestScreenInhibit:
             resolve_map=resolve_map,
             run_map=run_map,
         )
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.ok is False
         assert "all inhibit mechanisms failed" in result.detail
 
@@ -659,7 +659,7 @@ class TestScreenInhibit:
             run_map=run_map,
         )
         inh._screensaver_cookie = 99
-        result = inh.disable("DP-1")
+        result = inh.disable()
         assert result.changed is True
         assert "ScreenSaver cookie released" in result.detail
         assert inh._screensaver_cookie is None
@@ -673,10 +673,10 @@ class TestScreenInhibit:
             resolve_map=resolve_map,
             run_map=run_map,
         )
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.changed is True
         assert inh._screensaver_cookie == 5
-        result2 = inh.enable("DP-1")
+        result2 = inh.enable()
         assert result2.changed is True
         assert inh._screensaver_cookie == 5
         screensaver_calls = [
@@ -691,7 +691,7 @@ class TestScreenInhibit:
     def test_disable_no_cookie_releases_gracefully(self, feature_builder):
         """Disable with no cookie should still succeed."""
         inh, _ = feature_builder(ScreenInhibit, enable_inhibit=True)
-        result = inh.disable("DP-1")
+        result = inh.disable()
         assert result.changed is True
         assert "ScreenSaver cookie released" in result.detail
 
@@ -706,7 +706,7 @@ class TestScreenInhibit:
             resolve_map=resolve_map,
             run_map=run_map,
         )
-        result = inh.enable("DP-1")
+        result = inh.enable()
         assert result.ok is False
         assert inh._screensaver_cookie is None
 
@@ -924,23 +924,19 @@ class TestInhibitWrapperFactory:
 
 class TestSystemdRunWrapper:
     def test_wrap_argv_disabled(self, tmp_path, logger):
-        """SystemdRun.wrap_argv returns argv unchanged when disabled."""
+        """systemd_run_wrapper_factory returns None when disabled."""
         cfg = _cfg(runtime_dir=str(tmp_path), enable_systemd_run=False)
         r = Runner(logger)
-        sd = SystemdRun(cfg, r, logger)
-        result = sd.wrap_argv(["mygame"])
-        assert result == ["mygame"]
+        assert systemd_run_wrapper_factory(cfg, r, logger) is None
 
     def test_wrap_argv_systemd_run_missing(self, tmp_path, logger):
-        """SystemdRun.wrap_argv returns argv when systemd-run is not found."""
+        """Factory returns None when systemd-run is not found."""
         cfg = _cfg(runtime_dir=str(tmp_path), enable_systemd_run=True)
         r = FakeRunner(logger)
-        sd = SystemdRun(cfg, r, logger)
-        result = sd.wrap_argv(["mygame"])
-        assert result == ["mygame"]
+        assert systemd_run_wrapper_factory(cfg, r, logger) is None
 
     def test_wrap_argv_success(self, tmp_path, logger):
-        """SystemdRun.wrap_argv wraps with systemd-run when available."""
+        """Factory wraps with systemd-run when available."""
         cfg = _cfg(
             runtime_dir=str(tmp_path),
             enable_systemd_run=True,
@@ -948,14 +944,15 @@ class TestSystemdRunWrapper:
         )
         r = FakeRunner(logger)
         r.when_resolved("systemd-run", "/usr/bin/systemd-run")
-        sd = SystemdRun(cfg, r, logger)
-        result = sd.wrap_argv(["mygame"])
+        wrap = systemd_run_wrapper_factory(cfg, r, logger)
+        assert wrap is not None
+        result = wrap(["mygame"])
         assert result[0] == "systemd-run"
         assert "--user" in result
         assert "mygame" in result
 
     def test_wrap_argv_empty_args(self, tmp_path, logger):
-        """SystemdRun.wrap_argv returns argv when systemd_run_args is empty."""
+        """Factory returns None when systemd_run_args is empty."""
         cfg = _cfg(
             runtime_dir=str(tmp_path),
             enable_systemd_run=True,
@@ -963,9 +960,7 @@ class TestSystemdRunWrapper:
         )
         r = FakeRunner(logger)
         r.when_resolved("systemd-run", "/usr/bin/systemd-run")
-        sd = SystemdRun(cfg, r, logger)
-        result = sd.wrap_argv(["mygame"])
-        assert result == ["mygame"]
+        assert systemd_run_wrapper_factory(cfg, r, logger) is None
 
 
 class TestWrapperChain:

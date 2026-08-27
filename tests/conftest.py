@@ -34,8 +34,8 @@ class FakeFeature(_BaseFeature):
         disable_result: FeatureResult | None = None,
     ):
         self.name = name
-        self.enable_calls: list[str] = []
-        self.disable_calls: list[str] = []
+        self.enable_calls: list[bool] = []
+        self.disable_calls: list[bool] = []
         self.enable_result = enable_result or FeatureResult.did_change(
             f"{name} enabled"
         )
@@ -43,12 +43,12 @@ class FakeFeature(_BaseFeature):
             f"{name} disabled"
         )
 
-    def enable(self, output: str) -> FeatureResult:
-        self.enable_calls.append(output)
+    def enable(self) -> FeatureResult:
+        self.enable_calls.append(True)
         return self.enable_result
 
-    def disable(self, output: str) -> FeatureResult:
-        self.disable_calls.append(output)
+    def disable(self) -> FeatureResult:
+        self.disable_calls.append(True)
         return self.disable_result
 
 
@@ -74,7 +74,7 @@ def _cfg(**overrides: Any) -> Config:
         "profile_desktop": "balanced-bazzite",
         "audio_latency": "60",
         "steam_script": "",
-        "vrr_output_default": "DP-1",
+        "vrr_output_default": "",
         "runtime_dir": "/tmp",
     }
     defaults.update(overrides)

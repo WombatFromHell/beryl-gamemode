@@ -22,31 +22,25 @@ from gamemode.orchestration import collect_features, features_disable, features_
 from gamemode.runner import Runner
 from gamemode.state import StateManager
 
-_HandlerType = Any
 
-
-def _prepare_base(
-    config: Config, log: logging.Logger, *, debug: bool = False
-) -> tuple[str, StateManager]:
+def _prepare_base(config: Config, log: logging.Logger) -> StateManager:
     """Shared setup for all action entry points."""
-    output = output_resolve(config)
     state = StateManager(config)
     state.init()
-    return output, state
+    return state
 
 
 def _prepare_action(
-    config: Config, runner: Runner, log: logging.Logger, *, debug: bool = False
-) -> tuple[str, collections.abc.Sequence[tuple[str, _BaseFeature]], StateManager]:
-    output, state = _prepare_base(config, log, debug=debug)
+    config: Config, runner: Runner, log: logging.Logger
+) -> tuple[collections.abc.Sequence[tuple[str, _BaseFeature]], StateManager]:
+    state = _prepare_base(config, log)
     features = collect_features(config, runner, log)
-    return output, features, state
+    return features, state
 
 
-def action_on(
-    config: Config, runner: Runner, log: logging.Logger, *, debug: bool = False
-) -> int:
-    output, features, state = _prepare_action(config, runner, log, debug=debug)
+def action_on(config: Config, runner: Runner, log: logging.Logger) -> int:
+    output = output_resolve(config)
+    features, state = _prepare_action(config, runner, log)
     log.info("Activating (output: %s)", output)
     if state.is_wrapper:
         log.debug("Wrapper mode active, skipping on")
@@ -55,7 +49,7 @@ def action_on(
         log.info("Already active (idempotent)")
         return 0
     state.mark_active()
-    features_enable(features, output, log)
+    features_enable(features, log)
     log.info("Activation complete")
     return 0
 
@@ -64,11 +58,9 @@ def action_off(
     config: Config,
     runner: Runner,
     log: logging.Logger,
-    *,
-    debug: bool = False,
 ) -> int:
-    output, features, state = _prepare_action(config, runner, log, debug=debug)
-    features_disable(features, output, log)
+    features, state = _prepare_action(config, runner, log)
+    features_disable(features, log)
     state.clear()
     log.info("Cleanup complete")
     return 0
@@ -114,7 +106,6 @@ def action_status(config: Config) -> int:
 
 def _build_cleanup_closure(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
-    output: str,
     log: logging.Logger,
     state: StateManager,
     *,
@@ -128,7 +119,7 @@ def _build_cleanup_closure(
             return
         _done = True
         try:
-            features_disable(features, output, log)
+            features_disable(features, log)
             if not preserve_state:
                 state.clear()
         except Exception:
@@ -142,7 +133,7 @@ def _signal_guard(
     log: logging.Logger, child_proc: list[subprocess.Popen | None]
 ) -> Iterator[int]:
     pending_signal = [0]
-    _orig_handlers: dict[int, _HandlerType] = {}
+    _orig_handlers: dict[int, Any] = {}
 
     def _handler(signum: int, _frame: object) -> None:
         log.info("Received signal %s, terminating child and cleaning up", signum)
@@ -215,10 +206,9 @@ def action_wrapper(
     runner: Runner,
     log: logging.Logger,
     command: list[str],
-    *,
-    debug: bool = False,
 ) -> int:
-    output, state = _prepare_base(config, log, debug=debug)
+    output = output_resolve(config)
+    state = _prepare_base(config, log)
     log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
     _watch_parent(log)
 
@@ -231,7 +221,7 @@ def action_wrapper(
         if not already_active:
             state.mark_wrapper(command)
             features = collect_features(config, runner, log)
-            features_enable(features, output, log)
+            features_enable(features, log)
         else:
             features = []
             log.info(
@@ -239,7 +229,7 @@ def action_wrapper(
             )
 
         cleanup = _build_cleanup_closure(
-            features, output, log, state, preserve_state=already_active
+            features, log, state, preserve_state=already_active
         )
 
         chain = WrapperChain()

@@ -43,23 +43,23 @@ class TestFeatureOrchestration:
         f1 = FakeFeature("f1")
         f2 = FakeFeature("f2")
         features = [("f1", f1), ("f2", f2)]
-        features_enable(features, "DP-1", logger)
-        assert f1.enable_calls == ["DP-1"]
-        assert f2.enable_calls == ["DP-1"]
+        features_enable(features, logger)
+        assert f1.enable_calls == [True]
+        assert f2.enable_calls == [True]
 
     def test_features_disable_calls_disable(self, logger):
         """features_disable should call .disable() on each feature."""
         f1 = FakeFeature("f1")
         f2 = FakeFeature("f2")
         features = [("f1", f1), ("f2", f2)]
-        features_disable(features, "DP-1", logger)
-        assert f1.disable_calls == ["DP-1"]
-        assert f2.disable_calls == ["DP-1"]
+        features_disable(features, logger)
+        assert f1.disable_calls == [True]
+        assert f2.disable_calls == [True]
 
     def test_apply_features_logging(self, logger, caplog):
         """_apply_features should log the method and output."""
         caplog.set_level(logging.DEBUG)
         f1 = FakeFeature("f1")
         features = [("f1", f1)]
-        _apply_features(features, "DP-1", logger, "enable")
-        assert any("DP-1" in r.message for r in caplog.records)
+        _apply_features(features, logger, "enable")
+        assert any("features" in r.message.lower() for r in caplog.records)

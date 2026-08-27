@@ -100,11 +100,10 @@ class StateManager:
             self._config.state_file.unlink()
         except FileNotFoundError:
             pass
-        for f in self._config.state_dir.glob("lock_*"):
-            try:
-                f.unlink()
-            except OSError:
-                pass
+        try:
+            self._config.lock_file.unlink()
+        except FileNotFoundError:
+            pass
 
     def pid(self) -> int | None:
         return self._read_state().get("pid")

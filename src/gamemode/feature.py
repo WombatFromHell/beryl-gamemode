@@ -70,25 +70,25 @@ class _BaseFeature:
         """Return the config flag that gates this feature."""
         raise NotImplementedError
 
-    def _do_enable(self, output: str) -> FeatureResult:
+    def _do_enable(self) -> FeatureResult:
         """Implement the actual enable logic (no gating)."""
         raise NotImplementedError
 
-    def _do_disable(self, output: str) -> FeatureResult:
+    def _do_disable(self) -> FeatureResult:
         """Implement the actual disable logic (no gating)."""
         raise NotImplementedError
 
     # -- public API ------------------------------------------------------
 
-    def enable(self, output: str) -> FeatureResult:
+    def enable(self) -> FeatureResult:
         if not self._feature_enabled:
             return FeatureResult.skip("disabled by config")
-        return self._do_enable(output)
+        return self._do_enable()
 
-    def disable(self, output: str) -> FeatureResult:
+    def disable(self) -> FeatureResult:
         if not self._feature_enabled:
             return FeatureResult.skip("disabled by config")
-        return self._do_disable(output)
+        return self._do_disable()
 
     def make_checked_cmd(self, cmd: str, feature: str = "") -> CheckedCommandRunner:
         """Create a CheckedCommandRunner via the base runner."""

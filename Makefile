@@ -8,8 +8,8 @@ OUT = $(BUILD_DIR)/$(ARTIFACT)
 CHECKSUM = $(BUILD_DIR)/$(ARTIFACT).sha256sum
 VERSION_FILE = $(SRC_DIR)/gamemode/__version__.py
 
-# Fixed epoch for reproducible builds:
-SOURCE_DATE_EPOCH ?= 1
+# Fixed epoch for reproducible builds (forced, so env overrides can't break determinism):
+SOURCE_DATE_EPOCH := 1
 
 # Extract version from pyproject.toml
 VERSION := $(shell grep '^version = ' pyproject.toml | cut -d'"' -f2)

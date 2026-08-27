@@ -109,13 +109,13 @@ time.sleep(60)
         state_manager.mark_wrapper(["/bin/test", "--arg"])
         assert state_manager.cmd() == ["/bin/test", "--arg"]
 
-    def test_clear_glob_cleanup(self, tmp_path_cfg):
-        """clear() should remove lock_* files in the state directory."""
+    def test_clear_removes_lock_and_state(self, tmp_path_cfg):
+        """clear() should remove the state file and the lock file."""
         sm = StateManager(tmp_path_cfg)
         sm.init()
         sm.mark_wrapper()
-        # Create a lock_* file
-        lock_file = tmp_path_cfg.state_dir / "lock_test"
+        lock_file = tmp_path_cfg.lock_file
         lock_file.write_text("test")
         sm.clear()
         assert not lock_file.exists()
+        assert not tmp_path_cfg.state_file.exists()

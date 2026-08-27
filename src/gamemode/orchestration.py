@@ -33,27 +33,24 @@ def collect_features(
 
 def _apply_features(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
-    output: str,
     log: logging.Logger,
     method: str,
 ) -> None:
-    log.debug("%sing features for output: %s", method.capitalize(), output)
+    log.debug("%sing features", method.capitalize())
     for name, feat in features:
-        result = getattr(feat, method)(output)
+        result = getattr(feat, method)()
         log_feature_result(name, result, log)
 
 
 def features_enable(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
-    output: str,
     log: logging.Logger,
 ) -> None:
-    _apply_features(features, output, log, "enable")
+    _apply_features(features, log, "enable")
 
 
 def features_disable(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
-    output: str,
     log: logging.Logger,
 ) -> None:
-    _apply_features(features, output, log, "disable")
+    _apply_features(features, log, "disable")
