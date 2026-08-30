@@ -35,13 +35,9 @@ class StateManager:
             pass
 
     @staticmethod
-    def _close_lock_fd(fd: int, lock_path: Path) -> None:
+    def _close_lock_fd(fd: int, _lock_path: Path) -> None:
         try:
             os.close(fd)
-        except OSError:
-            pass
-        try:
-            lock_path.unlink()
         except OSError:
             pass
 

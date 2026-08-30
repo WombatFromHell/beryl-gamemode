@@ -214,23 +214,33 @@ def action_wrapper(
 
     with state.locked() as acquired:
         if not acquired:
-            log.debug("Another wrapper instance holds the lock, skipping")
-            return 0
+            log.warning(
+                "Prior gamemode session holds the lock — WrapperChain disabled, passing through command without wrappers"
+            )
+            cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
+            return _run_child(command, log, cleanup)
+
+        # Stale wrapper state (pid dead) should not block a new wrapper.
+        if state.is_wrapper and state.pid() is not None and not state.pid_alive():
+            log.info(
+                "Stale wrapper state detected (pid %s not alive), clearing", state.pid()
+            )
+            state.clear()
 
         already_active = state.is_active or state.is_wrapper
-        if not already_active:
-            state.mark_wrapper(command)
-            features = collect_features(config, runner, log)
-            features_enable(features, log)
-        else:
-            features = []
-            log.info(
-                "Gamemode already active. Wrapper will only apply configured wrappers (feature toggles skipped)."
+        if already_active:
+            log.warning(
+                "Prior gamemode session active (%s) — WrapperChain disabled, passing through command without wrappers",
+                state.mode,
             )
+            cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
+            return _run_child(command, log, cleanup)
 
-        cleanup = _build_cleanup_closure(
-            features, log, state, preserve_state=already_active
-        )
+        state.mark_wrapper(command)
+        features = collect_features(config, runner, log)
+        features_enable(features, log)
+
+        cleanup = _build_cleanup_closure(features, log, state, preserve_state=False)
 
         chain = WrapperChain()
         for name, factory in WRAPPER_FACTORIES.items():
