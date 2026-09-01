@@ -45,7 +45,7 @@ ENVIRONMENT:
   Booleans accept: true/false, 1/0, yes/no.
 
   General:
-    DEBUG=1              Enable debug logging
+    GAMEMODE_DEBUG=1     Enable debug logging (console at DEBUG + $XDG_RUNTIME_DIR/gamemode/gamemode.log)
     XDG_RUNTIME_DIR      State dir and log file location (default: /tmp)
 
   Feature Toggles:
@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     load_config_file()
 
     config = Config()
-    debug = os.environ.get("DEBUG", "") in ("1", "true", "yes")
+    debug = os.environ.get("GAMEMODE_DEBUG", "") in ("1", "true", "yes")
     log = setup_logging(config, to_file=debug, debug=debug)
     mode, command = cli_parse(argv)
     if mode is None:

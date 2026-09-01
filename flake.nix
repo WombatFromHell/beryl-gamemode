@@ -90,7 +90,7 @@
 
         (cd staging && find . -type f | LC_ALL=C sort | zip -X -q -@ archive.zip)
 
-        echo '#!/usr/bin/env python3' > $out
+        echo '#!/usr/bin/python3' > $out
         cat staging/archive.zip >> $out
         chmod +x $out
       '';

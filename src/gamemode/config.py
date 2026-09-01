@@ -156,7 +156,7 @@ class Config:
 
     @property
     def log_file(self) -> Path:
-        return Path(self.runtime_dir) / "gamemode.log"
+        return self.state_dir / "gamemode.log"
 
     @property
     def audio_env_file(self) -> Path:

@@ -16,6 +16,8 @@ class TestLogging:
         file_handlers = [h for h in log.handlers if isinstance(h, logging.FileHandler)]
         assert len(file_handlers) == 1
         assert Path(file_handlers[0].baseFilename) == tmp_path_cfg.log_file
+        # Log lands in the nested gamemode dir under the runtime dir.
+        assert tmp_path_cfg.log_file.parent == tmp_path_cfg.state_dir
 
     def test_debug_mode_creates_file_handler(self, tmp_path_cfg):
         """setup_logging with debug=True should create a file handler."""
