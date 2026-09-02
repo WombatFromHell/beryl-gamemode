@@ -24,11 +24,12 @@ clean:
 	.pytest_cache \
 	.ruff_cache \
 	.direnv \
+	.venv \
 	.pi \
 	result* \
 	.coverage
 
-build-nix: clean
+build-nix: configure
 	@echo "Building $(ARTIFACT) via Nix (version $(VERSION))"
 	mkdir -p $(BUILD_DIR)
 	nix build . --out-link ./$(OUT)
@@ -83,7 +84,7 @@ build: configure
 	@echo "Built: $(OUT)"
 	@echo "SHA256: $$(cat $(OUT).sha256sum | cut -d' ' -f1)"
 
-install: build
+install: $(OUT)
 	@cd $(BUILD_DIR) && sha256sum -c $(ARTIFACT).sha256sum
 	@if [ -d "$$HOME/.local/bin/scripts/" ]; then \
 		INSTALL_DIR="$$HOME/.local/bin/scripts"; \
