@@ -15,8 +15,9 @@ set -eu
 
 # One-time Nix bootstrap into the (optionally volume-mounted) /nix store root.
 # The marker lives inside /nix so it persists across container restarts. The
-# store is a single named volume shared by all three projects, so marker and
-# config snapshot are project-independent (no re-init per project).
+# store is a single named volume shared by all four workspace projects
+# (protonge-fetcher, neoscopebuddy, beryl-gamemode, ublue-rebase-helper), so
+# marker and config snapshot are project-independent (no re-init per project).
 marker=/nix/.nix-store-initialized
 nix_etc=/nix/.nix-etc
 

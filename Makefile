@@ -6,13 +6,12 @@ ENTRY_FUNC = main
 ARTIFACT = gamemode.pyz
 OUT = $(BUILD_DIR)/$(ARTIFACT)
 CHECKSUM = $(BUILD_DIR)/$(ARTIFACT).sha256sum
-VERSION_FILE = $(SRC_DIR)/gamemode/__version__.py
 
 CONTAINER_IMAGE = beryl-gamemode-nix
 CONTAINER_FILE = Containerfile.dev
-# Single named volume shared by all three projects (protonge-fetcher,
-# neoscopebuddy, beryl-gamemode) so the Nix store isn't duplicated per
-# project. NOTE: clean-container removes it for all three.
+# Single named volume shared by all four workspace projects (protonge-fetcher,
+# neoscopebuddy, beryl-gamemode, ublue-rebase-helper) so the Nix store isn't
+# duplicated per project. NOTE: clean-container removes it for all four.
 NIX_STORE_VOLUME = nix-store
 UV_CACHE_VOLUME = beryl-gamemode-uv-cache
 
@@ -99,14 +98,15 @@ build: clean check-host-tools
 	@echo "Building $(ARTIFACT) (version $(VERSION))"
 	@echo "SOURCE_DATE_EPOCH: $(SOURCE_DATE_EPOCH) ($(TIMESTAMP))"
 	mkdir -p $(BUILD_DIR)
-	# Inject version into __version__.py
-	sed -i 's/^__version__ = .*/__version__ = "$(VERSION)"/' $(VERSION_FILE)
 	# Create staging directory for deterministic build
 	# Copy contents of src/ directly into staging (not src/ itself)
 	# Use src/. (not src/*) so dotfiles are included, matching the Nix build
 	rm -rf $(BUILD_DIR)/staging
 	mkdir -p $(BUILD_DIR)/staging
 	cp -r $(SRC_DIR)/. $(BUILD_DIR)/staging/
+	# Inject version into staging copy of __version__.py (not source)
+	sed -i 's/^__version__ = .*/__version__ = "$(VERSION)"/' \
+		$(BUILD_DIR)/staging/gamemode/__version__.py
 	# Normalize permission bits on ALL files in staging directory.
 	# zip stores mode bits in its headers, so uncommitted local chmod's,
 	# umask differences, etc. must not leak into the archive. This must
