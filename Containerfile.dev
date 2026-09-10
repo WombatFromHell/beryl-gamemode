@@ -1,0 +1,61 @@
+FROM ubuntu:26.04
+
+# Install basic runtime dependencies required for the Nix installer script
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  curl \
+  ca-certificates \
+  xz-utils \
+  libatomic1 \
+  && rm -rf /var/lib/apt/lists/*
+
+# ponytail: inline entrypoint — one fewer file
+RUN cat <<'INIT' > /usr/local/bin/container-init.sh && chmod +x /usr/local/bin/container-init.sh
+#!/bin/sh
+set -eu
+
+# One-time Nix bootstrap into the (optionally volume-mounted) /nix store root.
+# The marker lives inside /nix so it persists across container restarts. The
+# store is a single named volume shared by all three projects, so marker and
+# config snapshot are project-independent (no re-init per project).
+marker=/nix/.nix-store-initialized
+nix_etc=/nix/.nix-etc
+
+if [ ! -f "$marker" ]; then
+    echo "[nix-init] Initializing shared Nix store under /nix ..."
+    curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix \
+        | sh -s -- install linux \
+            --init none \
+            --no-confirm \
+            --extra-conf "experimental-features = nix-command flakes" \
+            --extra-conf "sandbox = false" \
+            --extra-conf "build-users-group ="
+    touch "$marker"
+
+    # The installer writes /etc/nix, which lives on this container's ephemeral
+    # filesystem. Snapshot it into the volume so later containers can restore it.
+    mkdir -p "$nix_etc"
+    cp -a /etc/nix/. "$nix_etc"/
+fi
+
+# Re-materialize the config each start so the daemon and clients always agree.
+mkdir -p /etc/nix
+if [ -f "$nix_etc/nix.conf" ] && [ ! -f /etc/nix/nix.conf ]; then
+    cp -a "$nix_etc"/. /etc/nix/
+fi
+
+# Canonical settings; overwrites whatever the installer chose. Builds run as
+# root (empty build-users-group) with sandbox off, as is standard in containers.
+printf '%s\n' \
+    'experimental-features = nix-command flakes' \
+    'sandbox = false' \
+    'build-users-group = ' \
+    > /etc/nix/nix.custom.conf
+
+exec "$@"
+INIT
+
+# Add Nix binary path to system PATH so installed commands are available
+ENV PATH="/nix/var/nix/profiles/default/bin:${PATH}"
+
+ENTRYPOINT ["/usr/local/bin/container-init.sh"]
+CMD ["/bin/sh"]
