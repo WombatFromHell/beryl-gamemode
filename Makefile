@@ -28,11 +28,16 @@ CONTAINER_FLAGS = --security-opt label=disable --userns=keep-id:uid=0,gid=0
 # 1. Host project at /work
 # 2. Persistent Nix store root at /nix (store + database + profiles)
 # 3. Persistent uv cache at /root/.cache/uv
+# uv's project venv also lives on that volume: venv script shebangs are
+# absolute, and /work (container) != $(CURDIR) (host), so a shared .venv
+# breaks `uv run` in exactly one of the two environments.
 CONTAINER_MOUNTS = \
 	-v "$(CURDIR)":/work \
 	-v "$(NIX_STORE_VOLUME)":/nix \
 	-v "$(UV_CACHE_VOLUME)":/root/.cache/uv \
 	-e HOME=/root \
+	-e UV_PROJECT_ENVIRONMENT=/root/.cache/uv/venv \
+	-e PYRIGHT_PYTHON_CACHE_DIR=/root/.cache/uv/pyright \
 	-e DIRENV_DIR="" \
 	-e UV_CACHE_DIR=/root/.cache/uv \
 	-e UV_LINK_MODE=copy \
