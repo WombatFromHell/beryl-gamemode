@@ -142,6 +142,12 @@ build: clean check-host-tools
 	rm -rf $(BUILD_DIR)/staging $(BUILD_DIR)/archive.zip
 	$(REPORT_BUILT)
 
+# Real file target: up-to-date when present (from build, build-nix, or
+# build-container); the recipe only runs when it's missing (a dangling
+# store symlink from a container build counts as missing).
+$(OUT):
+	$(MAKE) build
+
 install: $(OUT)
 	@cd $(BUILD_DIR) && sha256sum -c $(ARTIFACT).sha256sum
 	@if [ -d "$$HOME/.local/bin/scripts/" ]; then \
