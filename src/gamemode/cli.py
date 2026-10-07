@@ -80,7 +80,8 @@ ENVIRONMENT:
     PULSE_LATENCY_MSEC  PulseAudio latency in ms (default: 60)
 
   Steam:
-    STEAM_ENV_SCRIPT  Path to Steam env script (default: ~/.local/bin/scripts/steam-env-base.sh)
+    STEAM_ENV_SCRIPT  Path to Steam env script (default: PATH lookup for
+                      steam-env-base.sh; set to empty string to disable)
 
   Systemd-Run:
     SYSTEMD_RUN_ARGS  systemd-run arguments

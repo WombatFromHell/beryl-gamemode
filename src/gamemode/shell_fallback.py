@@ -24,15 +24,18 @@ def shell_fallback(
     Pure: reads only *env* (defaults to os.environ) and the filesystem for
     the bash ~/.bashrc check. The command line is joined with shlex so the
     spawned shell sees the same words.
+
+    fish and zsh only pick up rc-defined functions in interactive mode
+    (fish -c loads no rc files at all; zsh -c reads only .zshenv), so they
+    run with -i. bash sources $BASH_ENV non-interactively, so -c suffices.
     """
     env = os.environ if env is None else env
     shell = os.path.basename(env.get("SHELL", ""))
     if shell not in ("bash", "zsh", "fish") or shutil.which(shell) is None:
         return None
-    argv = [env["SHELL"], "-c", shlex.join(command)]
     if shell == "bash":
         bashrc = os.path.expanduser("~/.bashrc")
         if not os.path.isfile(bashrc):
             return None
-        return argv, {"BASH_ENV": bashrc}
-    return argv, {}
+        return [env["SHELL"], "-c", shlex.join(command)], {"BASH_ENV": bashrc}
+    return [env["SHELL"], "-ic", shlex.join(command)], {}

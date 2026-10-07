@@ -19,10 +19,11 @@ Workaround table (verified empirically):
         Also: parent can 'export -f fn' -> 'bash -c fn' inherits it via
         BASH_FUNC_fn%% — but modern GNU env (coreutils 9.x, verified
         9.11) will NOT execute it, so any 'env fn' stage still fails.
-  zsh   'zsh -c fn' with ZDOTDIR -> dir containing .zshenv with the fn
-        (non-interactive zsh always sources .zshenv; .zshrc would NOT be
-        loaded, so the fn must live in .zshenv in practice).
-  fish  'fish -c fn' as-is (fresh fish loads config.fish / functions dir).
+  zsh   'zsh -ic fn' with ZDOTDIR -> dir containing .zshrc with the fn
+        (zsh -c alone reads only .zshenv; -i adds .zshrc, where functions
+        actually live in practice).
+  fish  'fish -ic fn' (fish -c loads no rc files at all; -i loads
+        config.fish / functions dir; fish has no separate login file).
   sh    none — no function export, no startup-file mechanism.
 
 Exit code 0 iff scenario A fails for every shell and every negotiable
@@ -120,15 +121,15 @@ def workaround(report: Report, sh: str, tmp: Path) -> str | None:
     elif sh == "zsh":
         zdot = tmp / "zdot"
         zdot.mkdir()
-        (zdot / ".zshenv").write_text(DEFS["zsh"] + "\n")
-        label = f"zsh -c fn with ZDOTDIR={zdot} (fn in .zshenv)"
-        rc, out = run(["zsh", "-c", FN], env={"ZDOTDIR": str(zdot)})
+        (zdot / ".zshrc").write_text(DEFS["zsh"] + "\n")
+        label = f"zsh -ic fn with ZDOTDIR={zdot} (fn in .zshrc)"
+        rc, out = run(["zsh", "-ic", FN], env={"ZDOTDIR": str(zdot)})
     elif sh == "fish":
         fdir = tmp / "xdg" / "fish"
         fdir.mkdir(parents=True)
         (fdir / "config.fish").write_text(DEFS["fish"] + "\n")
-        label = "fish -c fn (fresh fish auto-loads config; XDG_CONFIG_HOME set)"
-        rc, out = run(["fish", "-c", FN], env={"XDG_CONFIG_HOME": str(tmp / "xdg")})
+        label = "fish -ic fn (fish -c loads no rc files; -i loads config.fish)"
+        rc, out = run(["fish", "-ic", FN], env={"XDG_CONFIG_HOME": str(fdir.parent)})
     else:  # sh: no function export, no startup-file mechanism
         return None
 

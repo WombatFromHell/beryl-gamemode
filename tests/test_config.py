@@ -3,6 +3,7 @@
 import pytest
 from conftest import _cfg
 
+import gamemode.config as _cfgmod
 from gamemode.config import (
     Config,
     _parse_line,
@@ -142,6 +143,34 @@ class TestConfigFromEnv:
 
     def test_enable_systemd_run_default(self):
         assert Config.from_env({}).enable_systemd_run is True
+
+
+class TestSteamScript:
+    def test_defaults_to_path_lookup(self, monkeypatch):
+        monkeypatch.setattr(
+            _cfgmod.shutil, "which", lambda name: "/usr/bin/steam-env-base.sh"
+        )
+        cfg = Config.from_env({})
+        assert cfg.steam_script == "/usr/bin/steam-env-base.sh"
+
+    def test_path_lookup_miss_is_empty(self, monkeypatch):
+        monkeypatch.setattr(_cfgmod.shutil, "which", lambda name: None)
+        assert Config.from_env({}).steam_script == ""
+
+    def test_explicit_value_wins(self, monkeypatch):
+        monkeypatch.setattr(_cfgmod.shutil, "which", lambda name: "")
+        cfg = Config.from_env({"STEAM_ENV_SCRIPT": "/opt/custom.sh"})
+        assert cfg.steam_script == "/opt/custom.sh"
+
+    def test_empty_value_disables(self, monkeypatch):
+        monkeypatch.setattr(
+            _cfgmod.shutil, "which", lambda name: "/usr/bin/steam-env-base.sh"
+        )
+        cfg = Config.from_env({"STEAM_ENV_SCRIPT": ""})
+        assert cfg.steam_script == ""
+
+    def test_direct_construction_default_is_empty(self):
+        assert Config().steam_script == ""
 
 
 class TestShouldSkipLine:

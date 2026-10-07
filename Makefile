@@ -190,7 +190,7 @@ quality: lint format
 
 ci: configure test lint build
 
-build-nix: check-host-tools
+build-nix: clean check-host-tools
 	@echo "Building $(ARTIFACT) via Nix (version $(VERSION))"
 	mkdir -p $(BUILD_DIR)
 	nix build . --out-link ./$(OUT)

@@ -475,11 +475,11 @@ class TestWrapperShellFunctionFallback:
         return popen
 
     def test_fallback_fish(self, tmp_path, logger, monkeypatch):
-        """SHELL=fish, fn not on PATH -> spawn `fish -c <joined>`."""
+        """SHELL=fish, fn not on PATH -> spawn `fish -ic <joined>`."""
         monkeypatch.setenv("SHELL", "/bin/fish")
         popen = self._popen_mock()
         caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)
-        assert caller.call_args.args[0] == ["/bin/fish", "-c", "gm-fake-fn"]
+        assert caller.call_args.args[0] == ["/bin/fish", "-ic", "gm-fake-fn"]
         assert caller.call_args.kwargs.get("env") is None
 
     def test_no_fallback_when_command_found(self, tmp_path, logger, monkeypatch):

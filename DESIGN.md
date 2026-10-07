@@ -115,33 +115,33 @@ graph LR
 
 | Module           | Purpose                                                              |
 | ---------------- | -------------------------------------------------------------------- |
-| `cli.py`        | Entry point: `main()` parses the CLI and dispatches to the actions   |
+| `cli.py`         | Entry point: `main()` parses the CLI and dispatches to the actions   |
 | `__version__.py` | Provides `__version__` and `_get_version()` via `importlib.metadata` |
 
 The zipapp build synthesizes `__main__.py` (`from entry import main`) in the build staging area only — there is no `entry.py` in the source tree.
 
 ### CLI Layer
 
-| Module   | Purpose                                                                                                                                             |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module   | Purpose                                                                                                                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cli.py` | `cli_parse()` — `on`/`off`/`status`/`wrapper` modes; `main()` — config, logging, `validate_deps`, dispatch. USAGE text is templated from `registry.default_toggle_string()`. |
 
 ### Actions
 
-| Module       | Purpose                                                                                                                                                                                                                       |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `actions.py` | `action_on` / `action_off` / `action_status` / `action_wrapper`. `_negotiate_command` (shell-function fallback via `shell_fallback`), `_watch_parent` (`prctl PR_SET_PDEATHSIG`), `_signal_guard` (SIGTERM/SIGINT/SIGHUP), `_run_child` (sole child spawn, via `Runner.spawn`), `_build_cleanup_closure`. In wrapper mode with `enable_audio`, `PULSE_LATENCY_MSEC` is routed to the child through the same `extra_env` channel as the shell fallback. |
 
 ### Configuration
 
-| Module      | Purpose                                                                                                                                                                                                                          |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module      | Purpose                                                                                                                                                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config.py` | `Config.from_env()` — the **single env boundary**: `~/.config/gamemode.conf` (KEY=VALUE) overridden by `os.environ`, one read, one typed `Config` dataclass. Feature routing via `toggle_features` / `wrapper_features` sets; derived paths (`state_dir`, `state_file`, `lock_file`, `log_file`, `audio_env_file`). |
 
 ### Feature Registry
 
-| Module      | Purpose                                                                                                                                                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `registry.py` | `FEATURES: dict[str, FeatureSpec]` — the **single declaration of the feature set**: factory class, `(command, config-flag)` deps, and default-toggle membership per feature. Drives `collect_features`, `validate_deps`, the default `TOGGLE_FEATURES` string, and the USAGE routing text. Adding a feature is one line here. `steam` is registered with `factory=None` (wrapper-only, no feature class). |
 
 ### State Management
@@ -152,56 +152,56 @@ The zipapp build synthesizes `__main__.py` (`from entry import main`) in the bui
 
 ### Compositor Detection
 
-| Module          | Purpose                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Module          | Purpose                                                                                                                                                                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `compositor.py` | Detects **niri** via `XDG_SESSION_DESKTOP`/`XDG_CURRENT_DESKTOP` or a one-shot `pgrep -x niri` probe (documented exec exception — diagnostic, not feature logic). Checks for **KDE** via env vars. Resolves target display output name. |
 
 ### Dependency Validation
 
-| Module            | Purpose                                                                                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module            | Purpose                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `dependencies.py` | `validate_deps()` — checks the `(command, config-flag)` pairs declared in `registry.FEATURES` only when their feature flag is enabled. No hardcoded command→flag table. |
 
 ### Feature Protocol
 
-| Module       | Purpose                                                                                                                                                                                                                                                          |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module       | Purpose                                                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `feature.py` | Defines `FeatureResult`, `CommandWrapper` and `WrapperFactory` type aliases. Provides `_BaseFeature` with gated `enable()`/`disable()` (config check in one place; `_do_enable`/`_do_disable` are the hooks), plus the `log_feature_result` module-level function. |
 
 ### Feature Implementations (Package)
 
-| Module                       | Purpose                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `features/vrr.py`            | **VRR** — niri VRR toggle via `niri msg`; queries display capability via `jq`, toggles via `niri msg` IPC                                                                                                                                                                                                                                                                               |
-| `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                                                                           |
-| `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                                                                              |
-| `features/audio_priority.py` | **AudioPriority** — writes the `audio.env` file (`export PULSE_LATENCY_MSEC=...`); the env file is the contract, `os.environ` is never mutated. The wrapper child receives the override through the Popen env channel in `actions.py`.                                                                                                                                                                        |
-| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver). Starts/stops the KB&M idle monitor thread and emits the `warn_idle_partial_pair` warning (also called from `cli.py` before `on`/`wrapper`). |
-| `features/idle_monitor.py`   | **`_IdleMonitorThread`** — evdev-based KB&M idle monitor: polls `/dev/input/event*` via `select()`, fires `IDLE_CMD`/`ACTIVE_CMD` on idle/active transitions, timeout from DMS settings. Device classification delegated to `input_classifier`.                                                                                                                    |
+| Module                       | Purpose                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `features/vrr.py`            | **VRR** — niri VRR toggle via `niri msg`; queries display capability via `jq`, toggles via `niri msg` IPC                                                                                                                                                                                                                      |
+| `features/power_profile.py`  | **PowerProfile** — switches tuned profile via `tuned-adm`; reads current profile via `tuned-adm active`, sets profile via `tuned-adm profile`                                                                                                                                                                                  |
+| `features/scx_scheduler.py`  | **SCXScheduler** — starts/stops SCX scheduler via `scxctl`; reads status via `scxctl status`, applies scheduler via `scxctl set-scheduler`                                                                                                                                                                                     |
+| `features/audio_priority.py` | **AudioPriority** — writes the `audio.env` file (`export PULSE_LATENCY_MSEC=...`); the env file is the contract, `os.environ` is never mutated. The wrapper child receives the override through the Popen env channel in `actions.py`.                                                                                         |
+| `features/screen_inhibit.py` | **ScreenInhibit** — prevents screen lock via DMS (niri) or DBus (screensaver). Starts/stops the KB&M idle monitor thread and emits the `warn_idle_partial_pair` warning (also called from `cli.py` before `on`/`wrapper`).                                                                                                     |
+| `features/idle_monitor.py`   | **`_IdleMonitorThread`** — evdev-based KB&M idle monitor: polls `/dev/input/event*` via `select()`, fires `IDLE_CMD`/`ACTIVE_CMD` on idle/active transitions, timeout from DMS settings. Device classification delegated to `input_classifier`.                                                                                |
 | `features/wrappers.py`       | **Wrapper factories**: `steam_wrapper_factory` (prepends Steam env script), `inhibit_wrapper_factory` (adds `systemd-inhibit --what=idle:sleep`; gated by `ENABLE_SLEEP_INHIBIT`), `systemd_run_wrapper_factory` (prepends `systemd-run`). `WRAPPER_FACTORIES` dict — `action_wrapper` applies the enabled factories in order. |
 
 ### Input Classification
 
-| Module             | Purpose                                                                                                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module                | Purpose                                                                                                                                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `input_classifier.py` | `classify_input(event_path)` — pure module: udevadm / sysfs heuristics classifying an evdev device as `"kbm"` or `None` (steam controllers always excluded). Testable against a fake sysfs tree with no real devices. |
 
 ### Orchestration
 
-| Module             | Purpose                                                                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module             | Purpose                                                                                                                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `orchestration.py` | `collect_features()` — instantiates enabled features from `registry.FEATURES` (no inline feature construction). `features_enable()`/`features_disable()` — iterate features and call `enable()`/`disable()` through `log_feature_result`. |
 
 ### Runner Abstraction
 
-| Module      | Purpose                                                                                                                                                                                                                                                                |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module      | Purpose                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `runner.py` | `Runner` — wraps `subprocess` for all host-executable calls: `resolve()`, `require()`, `run()`, `capture()`, `pipe()`, `make_checked_runner()`, and `spawn()` — the **sole exec boundary** for children: debug logging and env merge (`{**os.environ, **env}`) in one place. `CheckedCommandRunner` — pre-validates command availability; provides `run_or_none()`, `run_ok()`, `is_available`. |
 
 ### Shell Fallback
 
-| Module            | Purpose                                                                                                                                                                                                                                    |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module              | Purpose                                                                                                                                                                                                                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `shell_fallback.py` | `shell_fallback(command, env=None)` — pure negotiation of shell-function resolution: returns `(argv, extra_env)` for `bash` (sources `$BASH_ENV` → `~/.bashrc`), `zsh` (sources `.zshenv`), `fish` (auto-loads config); `sh` has no mechanism → `None`. Verified by `tests/smoketest_shell_function.py`. |
 
 ### Logging
@@ -340,12 +340,12 @@ graph TD
 
 ### Feature Execution Rules
 
-| Feature       | Gate             | Compositor requirement | External deps (registry)              | Fallback behavior                                                                                  |
-| ------------- | ---------------- | ---------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| VRR           | `enable_vrr`     | niri only              | `niri`, `jq`                          | Skip if not niri or not capable                                                                    |
-| PowerProfile  | `enable_tuned`   | None                   | `tuned-adm`                           | Noop if already on correct profile                                                                 |
-| SCXScheduler  | `enable_scx`     | None                   | `scxctl`                              | Noop if already loaded                                                                             |
-| AudioPriority | `enable_audio`   | None                   | none (env file only)                  | Always succeeds; wrapper child gets the latency var via Popen env channel                          |
+| Feature       | Gate             | Compositor requirement | External deps (registry)                      | Fallback behavior                                                                                  |
+| ------------- | ---------------- | ---------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| VRR           | `enable_vrr`     | niri only              | `niri`, `jq`                                  | Skip if not niri or not capable                                                                    |
+| PowerProfile  | `enable_tuned`   | None                   | `tuned-adm`                                   | Noop if already on correct profile                                                                 |
+| SCXScheduler  | `enable_scx`     | None                   | `scxctl`                                      | Noop if already loaded                                                                             |
+| AudioPriority | `enable_audio`   | None                   | none (env file only)                          | Always succeeds; wrapper child gets the latency var via Popen env channel                          |
 | ScreenInhibit | `enable_inhibit` | niri for DMS path      | `dms`, `dbus-send`, `systemd-inhibit` (sleep) | Falls back to ScreenSaver if DMS fails; optional evdev idle monitor gated by `enable_idle_monitor` |
 
 ## Features
@@ -355,7 +355,7 @@ graph TD
 | `vrr`         | ✓      |         | Toggles VRR on a specific display output via niri IPC                                                                  |
 | `scx`         | ✓      |         | Starts/stops the SCX scheduler (default: `lavd` in `gaming` mode)                                                      |
 | `tuned`       | ✓      |         | Switches system power profile via tuned daemon                                                                         |
-| `audio`       | ✓      |         | Writes `PULSE_LATENCY_MSEC` env file; wrapper child receives the var via Popen env channel                              |
+| `audio`       | ✓      |         | Writes `PULSE_LATENCY_MSEC` env file; wrapper child receives the var via Popen env channel                             |
 | `inhibit`     | ✓      | ✓       | Prevents screen blanking/lock via DMS (niri) or DBus; wrapper adds `systemd-inhibit` (gated by `ENABLE_SLEEP_INHIBIT`) |
 | `steam`       |        | ✓       | Pre-pends Steam environment script to command                                                                          |
 | `systemd_run` |        | ✓       | Wraps command with `systemd-run` for resource control (CPU/IO weight)                                                  |

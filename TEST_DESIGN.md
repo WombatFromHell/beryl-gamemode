@@ -59,37 +59,37 @@ graph TB
 
 ### Test Configuration & Shared Infrastructure
 
-| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                    |
-| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                                                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `conftest.py` | Central fixture definitions, FakeRunner, FakeFeature, helper factories | `tmp_path_cfg`, `logger`, `runner`, `fake_runner`, `feature_builder`, `niri_session`, `state_manager`, `held_lock`, `disabled_features_env`, `spawn_child`, `mock_collect_features`, `_cfg`, `_cp`, `_resolve`, `_dep_runner`, `_state`, `_make_feature`, `_vrr_maps`, `_inhibit_maps`, `_dbus_uninhibit_cmd` |
 
 ### Unit Tests (by module)
 
-| Test File              | Source Module          | Coverage                                                                                                                                                                   | Test Count |
-| ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `test_cli.py`          | `cli.py`               | `cli_parse()` — all argument modes; `main()` version/usage/error                                                                                                           | 17         |
-| `test_config.py`       | `config.py`            | `Config` fields, bool/set parsing, `from_env()` single env boundary (file + env override, defaults, explicit mapping), `state_dir`, `systemd_run_args`, `toggle_features`, `wrapper_features`, `_parse_line`, `_should_skip_line`, `load_config_file` | 38         |
-| `test_feature.py`      | `feature.py`           | `FeatureResult` factories (skip/did_change/error/noop), `_BaseFeature` gating, `log_feature_result`                                                                                              | 12         |
-| `test_runner.py`        | `runner.py`            | `Runner.resolve()`, `require()`, `run()`, `pipe()`, `CheckedCommandRunner` (`run_or_none`, missing/error logging)                                                                                              | 10         |
-| `test_compositor.py`   | `compositor.py`        | niri/KDE detection (env + pgrep fallback), `_session_contains`, `output_resolve()`                                                                                         | 9          |
-| `test_dependencies.py` | `dependencies.py`      | `validate_deps()` — registry-driven feature combinations, missing deps (incl. `niri`/`dms` gates), logging                                                                                               | 13         |
-| `test_orchestration.py`| `orchestration.py`     | `collect_features()` — all/subset/empty via registry; `features_enable/disable`, logging                                                                                          | 6          |
-| `test_logging.py`      | `logging_setup.py`     | console handler, file handler, debug mode file handler                                                                                                                     | 3          |
-| `test_state.py`        | `state.py`             | `StateManager` CRUD, file locking, lock contention, process-death release, `pid_alive`, `cmd()`, `clear()` glob cleanup                                                    | 12         |
-| `test_shell_fallback.py`| `shell_fallback.py`   | `shell_fallback()` — bash (`BASH_ENV`→`~/.bashrc`), zsh, fish, `sh` unsupported, missing shell, pure env injection                                                          | 9          |
+| Test File                | Source Module       | Coverage                                                                                                                                                                                                                                              | Test Count |
+| ------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `test_cli.py`            | `cli.py`            | `cli_parse()` — all argument modes; `main()` version/usage/error                                                                                                                                                                                      | 17         |
+| `test_config.py`         | `config.py`         | `Config` fields, bool/set parsing, `from_env()` single env boundary (file + env override, defaults, explicit mapping), `state_dir`, `systemd_run_args`, `toggle_features`, `wrapper_features`, `_parse_line`, `_should_skip_line`, `load_config_file` | 38         |
+| `test_feature.py`        | `feature.py`        | `FeatureResult` factories (skip/did_change/error/noop), `_BaseFeature` gating, `log_feature_result`                                                                                                                                                   | 12         |
+| `test_runner.py`         | `runner.py`         | `Runner.resolve()`, `require()`, `run()`, `pipe()`, `CheckedCommandRunner` (`run_or_none`, missing/error logging)                                                                                                                                     | 10         |
+| `test_compositor.py`     | `compositor.py`     | niri/KDE detection (env + pgrep fallback), `_session_contains`, `output_resolve()`                                                                                                                                                                    | 9          |
+| `test_dependencies.py`   | `dependencies.py`   | `validate_deps()` — registry-driven feature combinations, missing deps (incl. `niri`/`dms` gates), logging                                                                                                                                            | 13         |
+| `test_orchestration.py`  | `orchestration.py`  | `collect_features()` — all/subset/empty via registry; `features_enable/disable`, logging                                                                                                                                                              | 6          |
+| `test_logging.py`        | `logging_setup.py`  | console handler, file handler, debug mode file handler                                                                                                                                                                                                | 3          |
+| `test_state.py`          | `state.py`          | `StateManager` CRUD, file locking, lock contention, process-death release, `pid_alive`, `cmd()`, `clear()` glob cleanup                                                                                                                               | 12         |
+| `test_shell_fallback.py` | `shell_fallback.py` | `shell_fallback()` — bash (`BASH_ENV`→`~/.bashrc`), zsh, fish, `sh` unsupported, missing shell, pure env injection                                                                                                                                    | 9          |
 
 ### Smoke Tests
 
-| File                           | Purpose                                                                                                                                                    |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `smoketest_evdev_idle.py`      | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system. |
-| `smoketest_shell_function.py`  | Standalone script (not pytest) validating shell-function fallback end-to-end on the host: `fish -c`, `bash -c` + `BASH_ENV`, `zsh -c` + `.zshenv` resolve a shell function through a real `Popen`. |
+| File                          | Purpose                                                                                                                                                                                            |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoketest_evdev_idle.py`     | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system.                                         |
+| `smoketest_shell_function.py` | Standalone script (not pytest) validating shell-function fallback end-to-end on the host: `fish -c`, `bash -c` + `BASH_ENV`, `zsh -c` + `.zshenv` resolve a shell function through a real `Popen`. |
 
 ### Integration Tests
 
-| Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                           | Test Count |
-| ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority (no `os.environ` mutation — env file is the contract), ScreenInhibit, idle monitor (incl. `input_classifier` fake-sysfs classification tests); wrapper factories: Steam, Inhibit, SystemdRun; WRAPPER_FACTORIES registry | 67         |
+| Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                   | Test Count |
+| ------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority (no `os.environ` mutation — env file is the contract), ScreenInhibit, idle monitor (incl. `input_classifier` fake-sysfs classification tests); wrapper factories: Steam, Inhibit, SystemdRun; WRAPPER_FACTORIES registry                                                                                                                       | 67         |
 | `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; `_watch_parent` libc/prctl; lock lifetime; `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state; `TestWrapperShellFunctionFallback` (BASH_ENV Popen-scoped); `TestWrapperAudioEnv` (`PULSE_LATENCY_MSEC` via Popen env channel, `os.environ` untouched) | 24         |
 
 ### Test Coverage Summary
@@ -102,17 +102,17 @@ graph TB
 
 ### Feature Test Matrix
 
-| Feature         | Toggle Test            | Wrapper Test | Key Scenarios                                                       |
-| --------------- | ---------------------- | ------------ | ------------------------------------------------------------------- |
-| VRR             | ✓ (`test_features.py`) |              | enable/disable/already_on/already_off/skip_not_capable/skip_no_niri |
-| PowerProfile    | ✓                      |              | enable/disable/already_game/noop/skip                               |
-| SCXScheduler    | ✓                      |              | enable/disable/switch_scheduler/noop/skip                           |
+| Feature         | Toggle Test            | Wrapper Test | Key Scenarios                                                                                                                                                         |
+| --------------- | ---------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VRR             | ✓ (`test_features.py`) |              | enable/disable/already_on/already_off/skip_not_capable/skip_no_niri                                                                                                   |
+| PowerProfile    | ✓                      |              | enable/disable/already_game/noop/skip                                                                                                                                 |
+| SCXScheduler    | ✓                      |              | enable/disable/switch_scheduler/noop/skip                                                                                                                             |
 | AudioPriority   | ✓                      | ✓            | no `os.environ` mutation on enable/disable; env file write/remove; wrapper child receives `PULSE_LATENCY_MSEC` via Popen env (`test_actions.py::TestWrapperAudioEnv`) |
-| ScreenInhibit   | ✓                      |              | DMS/ScreenSaver fallback/cookie/idempotent/error/all_fail           |
-| IdleMonitor     | ✓                      |              | meaningful_activity filtering, `classify_input` fake-sysfs classification (kbm/steam controller/missing), timeout |
-| Steam wrapper   |                        | ✓            | enabled/missing_script/disabled                                     |
-| inhibit wrapper |                        | ✓            | disabled/systemd-inhibit missing/enabled                            |
-| systemd-run     |                        | ✓            | disabled/missing/success/empty_args                                 |
+| ScreenInhibit   | ✓                      |              | DMS/ScreenSaver fallback/cookie/idempotent/error/all_fail                                                                                                             |
+| IdleMonitor     | ✓                      |              | meaningful_activity filtering, `classify_input` fake-sysfs classification (kbm/steam controller/missing), timeout                                                     |
+| Steam wrapper   |                        | ✓            | enabled/missing_script/disabled                                                                                                                                       |
+| inhibit wrapper |                        | ✓            | disabled/systemd-inhibit missing/enabled                                                                                                                              |
+| systemd-run     |                        | ✓            | disabled/missing/success/empty_args                                                                                                                                   |
 
 ## Fixture Dependency Chain
 

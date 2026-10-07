@@ -8,6 +8,7 @@ explicit mapping in tests.
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -103,11 +104,7 @@ class Config:
     profile_game: str = "throughput-performance-bazzite"
     profile_desktop: str = "balanced-bazzite"
     audio_latency: str = "60"
-    steam_script: str = field(
-        default_factory=lambda: str(
-            Path.home() / ".local" / "bin" / "scripts" / "steam-env-base.sh"
-        )
-    )
+    steam_script: str = ""
     vrr_output_default: str = ""
     systemd_run_args: list[str] = field(
         default_factory=lambda: list(_DEFAULT_SYSTEMD_RUN_ARGS)
@@ -150,9 +147,10 @@ class Config:
             profile_game=env.get("GAME_PROFILE", "throughput-performance-bazzite"),
             profile_desktop=env.get("DESKTOP_PROFILE", "balanced-bazzite"),
             audio_latency=env.get("PULSE_LATENCY_MSEC", "60"),
-            steam_script=env.get(
-                "STEAM_ENV_SCRIPT",
-                str(Path.home() / ".local" / "bin" / "scripts" / "steam-env-base.sh"),
+            steam_script=(
+                env["STEAM_ENV_SCRIPT"]
+                if "STEAM_ENV_SCRIPT" in env
+                else (shutil.which("steam-env-base.sh") or "")
             ),
             vrr_output_default=env.get("VRR_OUTPUTS", ""),
             systemd_run_args=(

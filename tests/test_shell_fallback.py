@@ -15,7 +15,7 @@ class TestShellFallback:
         result = shell_fallback(["yy", "--x"], env)
         assert result is not None
         argv, extra = result
-        assert argv == ["/bin/fish", "-c", "yy --x"]
+        assert argv == ["/bin/fish", "-ic", "yy --x"]
         assert extra == {}
 
     def test_bash_with_bashrc(self, tmp_path, monkeypatch):
@@ -36,7 +36,7 @@ class TestShellFallback:
         result = shell_fallback(["yy"], {"SHELL": "/usr/bin/zsh"})
         assert result is not None
         argv, extra = result
-        assert argv == ["/usr/bin/zsh", "-c", "yy"]
+        assert argv == ["/usr/bin/zsh", "-ic", "yy"]
         assert extra == {}
 
     @pytest.mark.parametrize("shell", ["/bin/sh", "/usr/bin/tcsh"])
