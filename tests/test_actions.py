@@ -82,9 +82,9 @@ original_signal_guard = actions._signal_guard
 @contextmanager
 def delayed_ready_guard(log, child_proc):
     # Write the ready file ONLY after the signal handlers are safely installed
-    with open(ready_file, "w") as f:
-        f.write("ready")
     with original_signal_guard(log, child_proc) as pending:
+        with open(ready_file, "w") as f:
+            f.write("ready")
         yield pending
 
 with patch.object(actions, "collect_features", return_value=features):
@@ -474,8 +474,9 @@ class TestWrapperShellFunctionFallback:
         popen.wait.return_value = 0
         return popen
 
-    def test_fallback_fish(self, tmp_path, logger, monkeypatch):
+    def test_fallback_fish(self, tmp_path, logger, monkeypatch, shell_stub):
         """SHELL=fish, fn not on PATH -> spawn `fish -ic <joined>`."""
+        shell_stub("fish")
         monkeypatch.setenv("SHELL", "/bin/fish")
         popen = self._popen_mock()
         caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)

@@ -386,6 +386,23 @@ def held_lock(tmp_path_cfg):
 
 
 @pytest.fixture()
+def shell_stub(tmp_path, monkeypatch):
+    """Make executable stubs available on PATH so tests never depend on a
+    real shell binary being installed (only `shutil.which` matters)."""
+
+    def stub(*names):
+        for name in names:
+            exe = tmp_path / name
+            exe.write_text("#!/bin/sh\n")
+            exe.chmod(0o755)
+        monkeypatch.setenv(
+            "PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}"
+        )
+
+    return stub
+
+
+@pytest.fixture()
 def disabled_features_env(monkeypatch):
     """Disable all feature env vars so Config() uses defaults."""
     monkeypatch.setenv("ENABLE_SCX_SCHEDULER", "false")

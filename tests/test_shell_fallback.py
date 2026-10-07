@@ -10,7 +10,8 @@ from gamemode.shell_fallback import shell_fallback
 
 
 class TestShellFallback:
-    def test_fish_plain(self, monkeypatch):
+    def test_fish_plain(self, shell_stub):
+        shell_stub("fish")
         env = {"SHELL": "/bin/fish"}
         result = shell_fallback(["yy", "--x"], env)
         assert result is not None
@@ -32,7 +33,8 @@ class TestShellFallback:
         monkeypatch.setenv("HOME", str(tmp_path))
         assert shell_fallback(["yy"], {"SHELL": "/bin/bash"}) is None
 
-    def test_zsh(self):
+    def test_zsh(self, shell_stub):
+        shell_stub("zsh")
         result = shell_fallback(["yy"], {"SHELL": "/usr/bin/zsh"})
         assert result is not None
         argv, extra = result
@@ -52,7 +54,8 @@ class TestShellFallback:
         monkeypatch.setenv("PATH", str(empty))
         assert shell_fallback(["yy"], {"SHELL": "/bin/fish"}) is None
 
-    def test_quoting_round_trip(self):
+    def test_quoting_round_trip(self, shell_stub):
+        shell_stub("fish")
         result = shell_fallback(["yy", "a b", "c"], {"SHELL": "/bin/fish"})
         assert result is not None
         argv, _ = result
