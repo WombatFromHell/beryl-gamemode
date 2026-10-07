@@ -4,19 +4,20 @@
 
 ```mermaid
 graph TB
-    conftest["tests/conftest.py<br/>central fixtures & factories & helpers<br/>FakeRunner, FakeFeature, feature_builder, tmp_path_cfg,<br/>logger, runner, niri_session, state_manager, held_lock,<br/>disabled_features_env, audio_env_cleanup,<br/>spawn_child, mock_collect_features, _dep_runner, _state"]
+    conftest["tests/conftest.py<br/>central fixtures & factories & helpers<br/>FakeRunner, FakeFeature, feature_builder, tmp_path_cfg,<br/>logger, runner, niri_session, state_manager, held_lock,<br/>disabled_features_env, spawn_child, mock_collect_features,<br/>_cfg, _cp, _resolve, _dep_runner, _state"]
 
-    test_cli["tests/test_cli.py<br/>6 tests<br/>TestCliParser, TestMain"]
-    test_config["tests/test_config.py<br/>21 tests<br/>TestConfig, TestShouldSkipLine,<br/>TestParseLine, TestLoadConfigFile"]
-    test_feature["tests/test_feature.py<br/>14 tests<br/>TestFeatureResult, TestBaseFeature"]
+    test_cli["tests/test_cli.py<br/>17 tests<br/>TestCliParser, TestMain"]
+    test_config["tests/test_config.py<br/>38 tests<br/>TestConfig, TestConfigFromEnv,<br/>TestShouldSkipLine, TestParseLine"]
+    test_feature["tests/test_feature.py<br/>12 tests<br/>TestFeatureResult, TestBaseFeature"]
     test_runner["tests/test_runner.py<br/>10 tests<br/>TestRunner, TestCheckedCommandRunner"]
-    test_compositor["tests/test_compositor.py<br/>8 tests<br/>TestCompositorDetection, TestOutputResolve"]
-    test_deps["tests/test_dependencies.py<br/>5 tests<br/>TestValidateDeps"]
+    test_compositor["tests/test_compositor.py<br/>9 tests<br/>TestCompositorDetection, TestOutputResolve"]
+    test_deps["tests/test_dependencies.py<br/>13 tests<br/>TestValidateDeps"]
     test_orch["tests/test_orchestration.py<br/>6 tests<br/>TestFeatureOrchestration"]
     test_logging["tests/test_logging.py<br/>3 tests<br/>TestLogging"]
-    test_state["tests/test_state.py<br/>14 tests<br/>TestStateManager"]
-    test_features["tests/test_features.py<br/>61 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestIdleMonitor,<br/>TestSteamWrapperPath, TestInhibitWrapperFactory,<br/>TestSystemdRunWrapper, TestWrapperChain,<br/>TestWrapperFactories"]
-    test_actions["tests/test_actions.py<br/>16 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime,<br/>TestActionOn, TestActionOff,<br/>TestActionStatus, TestCleanupClosure"]
+    test_state["tests/test_state.py<br/>12 tests<br/>TestStateManager"]
+    test_features["tests/test_features.py<br/>67 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestIdleMonitor<br/>(incl. input_classifier fake-sysfs tests),<br/>TestSteamWrapperPath, TestInhibitWrapperFactory,<br/>TestSystemdRunWrapper, TestWrapperFactories"]
+    test_actions["tests/test_actions.py<br/>24 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime,<br/>TestActionOn, TestActionOff,<br/>TestActionStatus, TestCleanupClosure,<br/>TestWrapperShellFunctionFallback, TestWrapperAudioEnv"]
+    test_shell["tests/test_shell_fallback.py<br/>9 tests<br/>TestShellFallback"]
 
     conftest --> test_cli
     conftest --> test_config
@@ -31,20 +32,21 @@ graph TB
     conftest --> test_actions
 
     test_cli -.-> gamemode_cli["gamemode.cli_parse, main"]
-    test_config -.-> gamemode_config["gamemode.Config, gamemode._env_bool,<br/>_parse_line, _should_skip_line, load_config_file"]
+    test_config -.-> gamemode_config["gamemode.Config.from_env, Config,<br/>_bool, _set, _parse_line, _should_skip_line,<br/>load_config_file"]
     test_feature -.-> gamemode_feature["gamemode.FeatureResult, _BaseFeature"]
     test_runner -.-> gamemode_runner["gamemode.Runner, gamemode.CheckedCommandRunner"]
     test_compositor -.-> gamemode_comp["gamemode.compositor_is_niri(), session_is_kde(),<br/>output_resolve(), _session_contains()"]
     test_deps -.-> gamemode_deps["gamemode.validate_deps()"]
-    test_orch -.-> gamemode_orch["gamemode.collect_features(), features_enable,<br/>features_disable, _apply_features"]
+    test_orch -.-> gamemode_orch["gamemode.collect_features(), features_enable,<br/>features_disable"]
     test_logging -.-> gamemode_log["gamemode.setup_logging()"]
     test_state -.-> gamemode_state["gamemode.StateManager"]
-    test_features -.-> gamemode_features["gamemode.features modules&#58;<br/>vrr, power_profile, scx_scheduler,<br/>audio_priority, screen_inhibit,<br/>wrappers"]
-    test_actions -.-> gamemode_actions["gamemode.actions modules&#58;<br/>action_on, action_off, action_status,<br/>action_wrapper, _watch_parent,<br/>_build_cleanup_closure"]
+    test_features -.-> gamemode_features["gamemode.features modules&#58;<br/>vrr, power_profile, scx_scheduler,<br/>audio_priority, screen_inhibit, idle_monitor,<br/>wrappers, input_classifier"]
+    test_actions -.-> gamemode_actions["gamemode.actions modules&#58;<br/>action_on, action_off, action_status,<br/>action_wrapper, _watch_parent, _run_child,<br/>_negotiate_command, _build_cleanup_closure"]
+    test_shell -.-> gamemode_shell["gamemode.shell_fallback()"]
 
     test_features -.-> test_features_helper["shared helpers&#58; _cfg, _cp, _resolve,<br/>_vrr_maps, _inhibit_maps, _dbus_uninhibit_cmd"]
     test_deps -.-> test_deps_helper["_dep_runner for FakeRunner setup"]
-    test_actions -.-> test_actions_helper["spawn_child for child processes,<br/>mock_collect_features, _state"]
+    test_actions -.-> test_actions_helper["spawn_child for child processes,<br/>mock_collect_features, _state, FakeFeature"]
     test_state -.-> test_state_helper["spawn_child for subprocess lock release test"]
 
     style conftest fill:#f9f,stroke:#333
@@ -57,44 +59,46 @@ graph TB
 
 ### Test Configuration & Shared Infrastructure
 
-| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                                                                                            |
-| ------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `conftest.py` | Central fixture definitions, FakeRunner, FakeFeature, helper factories | `tmp_path_cfg`, `logger`, `runner`, `fake_runner`, `feature_builder`, `niri_session`, `state_manager`, `held_lock`, `disabled_features_env`, `audio_env_cleanup`, `spawn_child`, `mock_collect_features`, `_dep_runner`, `_state` |
+| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                    |
+| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conftest.py` | Central fixture definitions, FakeRunner, FakeFeature, helper factories | `tmp_path_cfg`, `logger`, `runner`, `fake_runner`, `feature_builder`, `niri_session`, `state_manager`, `held_lock`, `disabled_features_env`, `spawn_child`, `mock_collect_features`, `_cfg`, `_cp`, `_resolve`, `_dep_runner`, `_state`, `_make_feature`, `_vrr_maps`, `_inhibit_maps`, `_dbus_uninhibit_cmd` |
 
 ### Unit Tests (by module)
 
-| Test File               | Source Module      | Coverage                                                                                                                                                                   | Test Count |
-| ----------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `test_cli.py`           | `cli.py`           | `cli_parse()` — all argument modes; `main()` version/usage/error                                                                                                           | 6          |
-| `test_config.py`        | `config.py`        | `Config` env vars, bool parsing, state_dir, `_env_bool`, `_parse_line`, `_should_skip_line`, `load_config_file`, `systemd_run_args`, `toggle_features`, `wrapper_features` | 21         |
-| `test_feature.py`       | `feature.py`       | `FeatureResult` factories (skip/did_change/error/noop), `log_feature_result`                                                                                               | 12         |
-| `test_runner.py`        | `runner.py`        | `Runner.resolve()`, `require()`, `run()`, `pipe()`, `CheckedCommandRunner`                                                                                                 | 10         |
-| `test_compositor.py`    | `compositor.py`    | niri/KDE detection (env + pgrep fallback), `_session_contains`, `output_resolve()`                                                                                         | 8          |
-| `test_dependencies.py`  | `dependencies.py`  | `validate_deps()` — all feature combinations, missing deps, logging                                                                                                        | 5          |
-| `test_orchestration.py` | `orchestration.py` | `collect_features()` — all/subset/empty; `features_enable/disable`, `_apply_features` logging                                                                              | 6          |
-| `test_logging.py`       | `logging_setup.py` | console handler, file handler, debug mode file handler                                                                                                                     | 3          |
-| `test_state.py`         | `state.py`         | `StateManager` CRUD, file locking, lock contention, process-death release, `pid_alive`, `cmd()`, `clear()` glob cleanup                                                    | 14         |
+| Test File              | Source Module          | Coverage                                                                                                                                                                   | Test Count |
+| ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `test_cli.py`          | `cli.py`               | `cli_parse()` — all argument modes; `main()` version/usage/error                                                                                                           | 17         |
+| `test_config.py`       | `config.py`            | `Config` fields, bool/set parsing, `from_env()` single env boundary (file + env override, defaults, explicit mapping), `state_dir`, `systemd_run_args`, `toggle_features`, `wrapper_features`, `_parse_line`, `_should_skip_line`, `load_config_file` | 38         |
+| `test_feature.py`      | `feature.py`           | `FeatureResult` factories (skip/did_change/error/noop), `_BaseFeature` gating, `log_feature_result`                                                                                              | 12         |
+| `test_runner.py`        | `runner.py`            | `Runner.resolve()`, `require()`, `run()`, `pipe()`, `CheckedCommandRunner` (`run_or_none`, missing/error logging)                                                                                              | 10         |
+| `test_compositor.py`   | `compositor.py`        | niri/KDE detection (env + pgrep fallback), `_session_contains`, `output_resolve()`                                                                                         | 9          |
+| `test_dependencies.py` | `dependencies.py`      | `validate_deps()` — registry-driven feature combinations, missing deps (incl. `niri`/`dms` gates), logging                                                                                               | 13         |
+| `test_orchestration.py`| `orchestration.py`     | `collect_features()` — all/subset/empty via registry; `features_enable/disable`, logging                                                                                          | 6          |
+| `test_logging.py`      | `logging_setup.py`     | console handler, file handler, debug mode file handler                                                                                                                     | 3          |
+| `test_state.py`        | `state.py`             | `StateManager` CRUD, file locking, lock contention, process-death release, `pid_alive`, `cmd()`, `clear()` glob cleanup                                                    | 12         |
+| `test_shell_fallback.py`| `shell_fallback.py`   | `shell_fallback()` — bash (`BASH_ENV`→`~/.bashrc`), zsh, fish, `sh` unsupported, missing shell, pure env injection                                                          | 9          |
 
 ### Smoke Tests
 
-| File                      | Purpose                                                                                                                                                    |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `smoketest_evdev_idle.py` | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system. |
+| File                           | Purpose                                                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoketest_evdev_idle.py`      | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system. |
+| `smoketest_shell_function.py`  | Standalone script (not pytest) validating shell-function fallback end-to-end on the host: `fish -c`, `bash -c` + `BASH_ENV`, `zsh -c` + `.zshenv` resolve a shell function through a real `Popen`. |
 
 ### Integration Tests
 
 | Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                           | Test Count |
 | ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority, ScreenInhibit; wrapper factories: Steam, Inhibit, SystemdRun; WrapperChain, WRAPPER_FACTORIES registry; idle monitor classification/filtering                                         | 61         |
-| `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; `_watch_parent` libc/prctl; lock lifetime; `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state | 16         |
+| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority (no `os.environ` mutation — env file is the contract), ScreenInhibit, idle monitor (incl. `input_classifier` fake-sysfs classification tests); wrapper factories: Steam, Inhibit, SystemdRun; WRAPPER_FACTORIES registry | 67         |
+| `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; `_watch_parent` libc/prctl; lock lifetime; `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state; `TestWrapperShellFunctionFallback` (BASH_ENV Popen-scoped); `TestWrapperAudioEnv` (`PULSE_LATENCY_MSEC` via Popen env channel, `os.environ` untouched) | 24         |
 
 ### Test Coverage Summary
 
 | Category    | Files  | Tests   | Scope                                       |
 | ----------- | ------ | ------- | ------------------------------------------- |
-| Unit        | 9      | 87      | Individual module functions/classes         |
-| Integration | 2      | 77      | Cross-module: features, actions, subprocess |
-| **Total**   | **11** | **164** | All public API paths                        |
+| Unit        | 10     | 129     | Individual module functions/classes         |
+| Integration | 2      | 91      | Cross-module: features, actions, subprocess |
+| **Total**   | **12** | **220** | All public API paths                        |
 
 ### Feature Test Matrix
 
@@ -103,9 +107,9 @@ graph TB
 | VRR             | ✓ (`test_features.py`) |              | enable/disable/already_on/already_off/skip_not_capable/skip_no_niri |
 | PowerProfile    | ✓                      |              | enable/disable/already_game/noop/skip                               |
 | SCXScheduler    | ✓                      |              | enable/disable/switch_scheduler/noop/skip                           |
-| AudioPriority   | ✓                      |              | enable env/set file/disable clear/remove file                       |
+| AudioPriority   | ✓                      | ✓            | no `os.environ` mutation on enable/disable; env file write/remove; wrapper child receives `PULSE_LATENCY_MSEC` via Popen env (`test_actions.py::TestWrapperAudioEnv`) |
 | ScreenInhibit   | ✓                      |              | DMS/ScreenSaver fallback/cookie/idempotent/error/all_fail           |
-| IdleMonitor     | ✓                      |              | meaningful_activity filtering, udevadm classification, timeout      |
+| IdleMonitor     | ✓                      |              | meaningful_activity filtering, `classify_input` fake-sysfs classification (kbm/steam controller/missing), timeout |
 | Steam wrapper   |                        | ✓            | enabled/missing_script/disabled                                     |
 | inhibit wrapper |                        | ✓            | disabled/systemd-inhibit missing/enabled                            |
 | systemd-run     |                        | ✓            | disabled/missing/success/empty_args                                 |
@@ -139,7 +143,6 @@ graph TD
     conftest --> state_mgr["state_manager<br/>initialised StateManager"]
     conftest --> held_lock["held_lock<br/>file lock for concurrency testing"]
     conftest --> disabled_env["disabled_features_env<br/>all feature env vars set to false"]
-    conftest --> audio_cleanup["audio_env_cleanup<br/>PULSE_LATENCY_MSEC reset"]
 
     cfg --> tmp_path_cfg
     fake_runner --> fake_runner_fixture
@@ -186,7 +189,6 @@ graph LR
         state_mgr["state_manager"]
         held_lock["held_lock"]
         disabled_env["disabled_features_env"]
-        audio_cleanup["audio_env_cleanup"]
     end
 
     subgraph consumers["Test files"]
@@ -201,6 +203,7 @@ graph LR
         test_compositor["test_compositor"]
         test_logging["test_logging"]
         test_feature["test_feature"]
+        test_shell["test_shell_fallback"]
     end
 
     test_features --> cfg
@@ -209,9 +212,9 @@ graph LR
     test_features --> vrr_maps
     test_features --> inhibit_maps
     test_features --> dbus_uninhibit
+    test_features --> fake_runner
     test_features --> feat_builder
     test_features --> niri_sess
-    test_features --> audio_cleanup
 
     test_actions --> cfg
     test_actions --> fake_feature
@@ -231,17 +234,15 @@ graph LR
     test_orch --> fake_feature
     test_orch --> tmp_path_cfg
     test_orch --> logger
-    test_orch --> state_helper
 
+    test_state --> cfg
     test_state --> spawn_child
+    test_state --> state_mgr
+    test_state --> held_lock
 
     test_cli --> disabled_env
 
     test_config --> cfg
-
-    test_state --> cfg
-    test_state --> state_mgr
-    test_state --> held_lock
 
     test_runner --> runner
     test_runner --> fake_runner_f
@@ -259,6 +260,8 @@ graph LR
     style consumers fill:#ccf,stroke:#333
 ```
 
+`test_shell_fallback.py` imports no conftest helpers — it is pure (`shell_fallback` takes an explicit `env` mapping) and uses only `monkeypatch`.
+
 ## Test Execution Flow
 
 Shows how tests exercise the runtime paths — which test classes cover which execution paths.
@@ -270,31 +273,37 @@ graph TD
         C["test_actions&#58;&#58;TestActionOff"] --> D[action_off]
         B --> E[_prepare_action]
         D --> E
-        E --> F[collect_features]
+        E --> F[collect_features<br/>registry-driven]
         F --> G[features_enable / disable]
     end
 
     subgraph wrapper["Wrapper Mode Paths"]
         H["test_actions&#58;&#58;TestActionWrapper"] --> I[action_wrapper]
-        I --> J[_watch_parent]
-        I --> K["state.locked"]
-        I --> L[WrapperChain]
-        I --> M[_run_child]
-        I --> N[_build_cleanup_closure]
+        I --> J[_negotiate_command]
+        J --> J2["shell_fallback<br/>TestWrapperShellFunctionFallback"]
+        I --> K[_watch_parent]
+        I --> L["state.locked"]
+        I --> M["extra_env channel<br/>TestWrapperAudioEnv"]
+        I --> N[WRAPPER_FACTORIES]
+        I --> O[_run_child via Runner.spawn]
+        I --> P[_build_cleanup_closure]
     end
 
     subgraph feature_tests["Feature Unit Paths"]
-        O["test_features&#58;&#58;TestVRR"] --> P["VRR.enable / disable"]
-        Q["test_features&#58;&#58;TestPowerProfile"] --> R["PowerProfile.enable / disable"]
-        S["test_features&#58;&#58;TestSCXScheduler"] --> T["SCXScheduler.enable / disable"]
-        U["test_features&#58;&#58;TestAudioPriority"] --> V["AudioPriority.enable / disable"]
-        W["test_features&#58;&#58;TestScreenInhibit"] --> X["ScreenInhibit.enable / disable"]
+        Q["test_features&#58;&#58;TestVRR"] --> R["VRR.enable / disable"]
+        S["test_features&#58;&#58;TestPowerProfile"] --> T["PowerProfile.enable / disable"]
+        U["test_features&#58;&#58;TestSCXScheduler"] --> V["SCXScheduler.enable / disable"]
+        W["test_features&#58;&#58;TestAudioPriority"] --> X["AudioPriority.enable / disable<br/>(no os.environ mutation)"]
+        Y["test_features&#58;&#58;TestScreenInhibit"] --> Z["ScreenInhibit.enable / disable"]
+        Y2["test_features&#58;&#58;TestIdleMonitor"] --> Z2["classify_input fake-sysfs<br/>idle/active transitions"]
+        Y3["test_shell_fallback&#58;&#58;TestShellFallback"] --> Z3["shell_fallback() per-shell"]
     end
 
     subgraph infra["Infrastructure Paths"]
-        Y["test_state&#58;&#58;TestStateManager"] --> Z[StateManager CRUD / lock]
-        AA["test_runner&#58;&#58;TestRunner"] --> BB["Runner.run / capture / pipe"]
-        CC["test_orchestration&#58;&#58;TestFeatureOrchestration"] --> DD[collect_features / features_enable / disable]
+        AA["test_state&#58;&#58;TestStateManager"] --> AB[StateManager CRUD / lock]
+        AC["test_runner&#58;&#58;TestRunner"] --> AD["Runner.run / capture / pipe / spawn"]
+        AE["test_orchestration&#58;&#58;TestFeatureOrchestration"] --> AF[collect_features / features_enable / disable]
+        AG["test_dependencies&#58;&#58;TestValidateDeps"] --> AH["validate_deps (registry deps)"]
     end
 
     style toggle fill:#9f9,stroke:#333

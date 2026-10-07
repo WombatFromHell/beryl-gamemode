@@ -17,9 +17,11 @@ class TestCliParser:
             (["--", "~/Games/foo/run.sh"], "wrapper", ["~/Games/foo/run.sh"]),
             (["mygame"], "wrapper", ["mygame"]),
             (["mygame", "--flag"], "wrapper", ["mygame", "--flag"]),
-            ([], None, []),
-            (["--help"], None, []),
-            (["-h"], None, []),
+            ([], "help", []),
+            (["--help"], "help", []),
+            (["-h"], "help", []),
+            (["-V"], "version", []),
+            (["--version"], "version", []),
         ],
     )
     def test_cli_parse(self, argv, expected_mode, expected_cmd, capsys):

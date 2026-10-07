@@ -119,6 +119,8 @@ def _dep_runner(
         "/usr/bin/systemd-inhibit" if enable_sleep_inhibit else None,
     )
     r.when_resolved("dbus-send", "/usr/bin/dbus-send" if enable_inhibit else None)
+    r.when_resolved("niri", "/usr/bin/niri" if enable_vrr else None)
+    r.when_resolved("dms", "/usr/bin/dms" if enable_inhibit else None)
     return r
 
 
@@ -329,14 +331,12 @@ def runner(logger):
 
 @pytest.fixture()
 def niri_session(monkeypatch):
-    """Fake a niri compositor session via environment variables."""
-    monkeypatch.setenv("XDG_SESSION_DESKTOP", "niri")
-    monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-    monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda: True)
+    """Fake a niri compositor session in the modules that call it."""
     # Also patch in feature modules that import compositor_is_niri at module level
-    monkeypatch.setattr("gamemode.features.vrr.compositor_is_niri", lambda: True)
+    monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda cfg: True)
+    monkeypatch.setattr("gamemode.features.vrr.compositor_is_niri", lambda cfg: True)
     monkeypatch.setattr(
-        "gamemode.features.screen_inhibit.compositor_is_niri", lambda: True
+        "gamemode.features.screen_inhibit.compositor_is_niri", lambda cfg: True
     )
 
 
@@ -395,9 +395,3 @@ def disabled_features_env(monkeypatch):
     monkeypatch.setenv("ENABLE_AUDIO_PRIORITY_BOOST", "false")
     monkeypatch.setenv("ENABLE_STEAM_ENV", "false")
     monkeypatch.setenv("ENABLE_SYSTEMD_RUN", "false")
-
-
-@pytest.fixture()
-def audio_env_cleanup(monkeypatch):
-    """Reset PULSE_LATENCY_MSEC after each test."""
-    monkeypatch.delenv("PULSE_LATENCY_MSEC", raising=False)

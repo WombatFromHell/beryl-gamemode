@@ -34,12 +34,6 @@ class TestStateManager:
         with state_manager.locked() as acquired:
             assert acquired is True
 
-    def test_is_lock_held_when_free(self, state_manager):
-        assert state_manager.is_lock_held() is False
-
-    def test_is_lock_held_when_held(self, state_manager, held_lock):
-        assert state_manager.is_lock_held() is True
-
     def test_lock_contention_returns_false(self, state_manager, held_lock):
         with state_manager.locked() as acquired:
             assert acquired is False

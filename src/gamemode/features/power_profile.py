@@ -10,11 +10,9 @@ from gamemode.runner import Runner
 
 
 class PowerProfile(_BaseFeature):
-    _feature_name = "Performance mode"
-
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._tuned = self.make_checked_cmd("tuned-adm", "Performance mode")
+        self._tuned = self._run.make_checked_runner("tuned-adm", "Performance mode")
 
     @property
     def _feature_enabled(self) -> bool:

@@ -9,16 +9,15 @@ import logging
 import os
 import shutil
 import signal
-import subprocess
-import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from subprocess import Popen
 from typing import Any
 
 from gamemode.compositor import compositor_is_niri, output_resolve, session_is_kde
 from gamemode.config import Config
 from gamemode.feature import _BaseFeature
-from gamemode.features.wrappers import WRAPPER_FACTORIES, WrapperChain
+from gamemode.features.wrappers import WRAPPER_FACTORIES
 from gamemode.orchestration import collect_features, features_disable, features_enable
 from gamemode.runner import Runner
 from gamemode.shell_fallback import shell_fallback
@@ -26,7 +25,9 @@ from gamemode.state import StateManager
 
 
 def _negotiate_command(
-    command: list[str], log: logging.Logger
+    command: list[str],
+    log: logging.Logger,
+    config: Config,
 ) -> tuple[list[str], dict[str, str]]:
     """Resolve *command* to an argv that exec can run.
 
@@ -44,7 +45,7 @@ def _negotiate_command(
             "for SHELL=%s — attempting as-is (wrap it in a real executable "
             "to make it work everywhere)",
             command[0],
-            os.environ.get("SHELL", "<unset>"),
+            config.shell or "<unset>",
         )
         return command, {}
     argv, extra_env = fallback
@@ -103,10 +104,10 @@ def _build_status_lines(config: Config, state: StateManager) -> list[str]:
     mode = state.mode
     pid = state.pid()
     cmd = state.cmd()
-    niri = compositor_is_niri()
-    kde = session_is_kde()
-    session = os.environ.get("XDG_SESSION_DESKTOP", "(unset)")
-    current_desktop = os.environ.get("XDG_CURRENT_DESKTOP", "(unset)")
+    niri = compositor_is_niri(config)
+    kde = session_is_kde(config)
+    session = config.xdg_session_desktop or "(unset)"
+    current_desktop = config.xdg_current_desktop or "(unset)"
     output = output_resolve(config)
     if mode == "wrapper" and pid is not None:
         alive = state.pid_alive()
@@ -162,9 +163,7 @@ def _build_cleanup_closure(
 
 
 @contextmanager
-def _signal_guard(
-    log: logging.Logger, child_proc: list[subprocess.Popen | None]
-) -> Iterator[int]:
+def _signal_guard(log: logging.Logger, child_proc: list[Popen | None]) -> Iterator[int]:
     pending_signal = [0]
     _orig_handlers: dict[int, Any] = {}
 
@@ -215,26 +214,22 @@ def _watch_parent(log: logging.Logger) -> None:
 
 def _run_child(
     exec_cmd: list[str],
+    runner: Runner,
     log: logging.Logger,
     cleanup: collections.abc.Callable[[], None],
     env: dict[str, str] | None = None,
 ) -> int:
-    child_proc: list[subprocess.Popen | None] = [None]
-    popen_env = {**os.environ, **env} if env else None
+    child_proc: list[Popen | None] = [None]
     try:
-        child_proc[0] = subprocess.Popen(
-            exec_cmd, start_new_session=True, env=popen_env
-        )
+        child_proc[0] = runner.spawn(exec_cmd, env=env, start_new_session=True)
     except OSError as exc:
         log.error("Failed to execute command: %s", exc)
         cleanup()
         return 1
 
-    with _signal_guard(log, child_proc) as pending_signal:
+    with _signal_guard(log, child_proc):
         retcode = child_proc[0].wait()
     cleanup()
-    if pending_signal:
-        sys.exit(128 + pending_signal)
     return retcode
 
 
@@ -247,16 +242,16 @@ def action_wrapper(
     output = output_resolve(config)
     state = _prepare_base(config, log)
     log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
-    argv, extra_env = _negotiate_command(command, log)
+    argv, extra_env = _negotiate_command(command, log, config)
     _watch_parent(log)
 
     with state.locked() as acquired:
         if not acquired:
             log.warning(
-                "Prior gamemode session holds the lock — WrapperChain disabled, passing through command without wrappers"
+                "Prior gamemode session holds the lock — wrappers disabled, passing through command"
             )
             cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(argv, log, cleanup, extra_env)
+            return _run_child(argv, runner, log, cleanup, extra_env)
 
         # Stale wrapper state (pid dead) should not block a new wrapper.
         if state.is_wrapper and state.pid() is not None and not state.pid_alive():
@@ -268,22 +263,24 @@ def action_wrapper(
         already_active = state.is_active or state.is_wrapper
         if already_active:
             log.warning(
-                "Prior gamemode session active (%s) — WrapperChain disabled, passing through command without wrappers",
+                "Prior gamemode session active (%s) — wrappers disabled, passing through command",
                 state.mode,
             )
             cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(argv, log, cleanup, extra_env)
+            return _run_child(argv, runner, log, cleanup, extra_env)
 
         state.mark_wrapper(command)
         features = collect_features(config, runner, log)
         features_enable(features, log)
+        if config.enable_audio:
+            extra_env = {**extra_env, "PULSE_LATENCY_MSEC": config.audio_latency}
 
         cleanup = _build_cleanup_closure(features, log, state, preserve_state=False)
 
-        chain = WrapperChain()
+        exec_cmd = list(argv)
         for name, factory in WRAPPER_FACTORIES.items():
             if name in config.wrapper_features:
-                chain.add_factory(factory, config, runner, log)
-
-        exec_cmd = chain.apply(argv)
-        return _run_child(exec_cmd, log, cleanup, extra_env)
+                wrapper = factory(config, runner, log)
+                if wrapper is not None:
+                    exec_cmd = wrapper(exec_cmd)
+        return _run_child(exec_cmd, runner, log, cleanup, extra_env)

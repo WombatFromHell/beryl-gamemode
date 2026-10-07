@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from gamemode.compositor import compositor_is_niri
 from gamemode.config import Config
@@ -19,11 +18,9 @@ class VRR(_BaseFeature):
     _JQ_VRR_SUPPORTED = ".[$o].vrr_supported // true"
     _JQ_VRR_ENABLED = 'if .[$o].vrr_enabled == true then "true" elif .[$o].vrr_enabled == false then "false" else "" end'
 
-    _feature_name = "VRR"
-
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._niri_cmd = self.make_checked_cmd("niri", "VRR")
+        self._niri_cmd = self._run.make_checked_runner("niri", "VRR")
 
     @property
     def _feature_enabled(self) -> bool:
@@ -57,8 +54,8 @@ class VRR(_BaseFeature):
         return [name for name, info in data.items() if info.get("logical") is not None]
 
     def _targets(self) -> list[str]:
-        if env := os.environ.get("VRR_OUTPUTS"):
-            return self._valid_outputs(env)
+        if self._cfg.vrr_output_default:
+            return self._valid_outputs(self._cfg.vrr_output_default)
         return self._all_enabled_outputs()
 
     def _aggregate(self, results: list[FeatureResult]) -> FeatureResult:
@@ -107,7 +104,7 @@ class VRR(_BaseFeature):
         return self._niri_cmd.run_ok(["niri", "msg", "output", output, "vrr", state])
 
     def _do_enable(self) -> FeatureResult:
-        if not compositor_is_niri():
+        if not compositor_is_niri(self._cfg):
             return FeatureResult.skip("niri not running")
         targets = self._targets()
         if not targets:
@@ -115,7 +112,7 @@ class VRR(_BaseFeature):
         return self._aggregate([self._vrr_toggle(t, "on") for t in targets])
 
     def _do_disable(self) -> FeatureResult:
-        if not compositor_is_niri():
+        if not compositor_is_niri(self._cfg):
             return FeatureResult.skip("niri not running")
         targets = self._targets()
         if not targets:

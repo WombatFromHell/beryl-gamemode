@@ -25,34 +25,15 @@ from gamemode.runner import Runner
 from gamemode.state import StateManager
 
 
-class TestActionWrapper:
-    def test_cleanup_fires_on_normal_child_exit(self, tmp_path, logger):
-        """When the child exits normally, cleanup must run."""
-        cfg = _cfg(runtime_dir=str(tmp_path))
-        state = _state(cfg)
-        state.init()
-        feature_a = FakeFeature("a")
-        features = [("fake_a", feature_a)]
-        true_runner = Runner(logger)
-        with (
-            mock_collect_features(features),
-            patch.object(Runner, "resolve", return_value="/bin/true"),
-        ):
-            retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
-        assert retcode == 0
-        assert feature_a.disable_calls == [True]
-        assert state.mode == ""
-
-    @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
-    def test_cleanup_fires_on_signal(self, tmp_path, logger, signum):
-        """When the wrapper receives SIGTERM/SIGINT, cleanup must run before exit."""
-        cfg = _cfg(runtime_dir=str(tmp_path))
-        state_file = tmp_path / f"feature_state_{signum.name.lower()}.json"
-        ready_file = tmp_path / "signal_ready"
-        gamemode_dir = str(Path(__file__).parent.parent / "src")
-        child = spawn_child(
-            tmp_path,
-            f"""
+def _spawn_signal_wrapper(tmp_path: Path, tag: str) -> subprocess.Popen:
+    """Spawn a wrapper child running /bin/sleep 60, recording feature disable
+    to feature_state_<tag>.json and exiting with action_wrapper's return code."""
+    state_file = tmp_path / f"feature_state_{tag}.json"
+    ready_file = tmp_path / "signal_ready"
+    gamemode_dir = str(Path(__file__).parent.parent / "src")
+    return spawn_child(
+        tmp_path,
+        f"""
 import sys, os, time, json, signal
 from unittest.mock import MagicMock, patch
 from contextlib import contextmanager
@@ -108,19 +89,58 @@ def delayed_ready_guard(log, child_proc):
 
 with patch.object(actions, "collect_features", return_value=features):
     with patch.object(actions, "_signal_guard", delayed_ready_guard):
-        actions.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
+        rc = actions.action_wrapper(cfg, runner, logger, ["/bin/sleep", "60"])
+sys.exit(rc)
 """,
-            script_name="wrapper_signal.py",
-            ready_name="signal_ready",
-        )
+        script_name=f"wrapper_signal_{tag}.py",
+        ready_name="signal_ready",
+    )
+
+
+class TestActionWrapper:
+    def test_cleanup_fires_on_normal_child_exit(self, tmp_path, logger):
+        """When the child exits normally, cleanup must run."""
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        feature_a = FakeFeature("a")
+        features = [("fake_a", feature_a)]
+        true_runner = Runner(logger)
+        with (
+            mock_collect_features(features),
+            patch.object(Runner, "resolve", return_value="/bin/true"),
+        ):
+            retcode = action_wrapper(cfg, true_runner, logger, ["/bin/true"])
+        assert retcode == 0
+        assert feature_a.disable_calls == [True]
+        assert state.mode == ""
+
+    @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
+    def test_cleanup_fires_on_signal(self, tmp_path, logger, signum):
+        """When the wrapper receives SIGTERM/SIGINT, cleanup must run before exit."""
+        tag = f"cleanup_{signum.name.lower()}"
+        child = _spawn_signal_wrapper(tmp_path, tag)
         child.send_signal(signum)
         child.wait(timeout=10)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state_file = tmp_path / f"feature_state_{tag}.json"
         assert state_file.exists(), (
             f"Child did not write feature state (rc={child.returncode})"
         )
         result = json.loads(state_file.read_text())
         assert result["dis"] == [True], f"Cleanup did not run: {result}"
         assert StateManager(cfg).mode == "", "State not cleared"
+
+    @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
+    def test_signal_exit_code_is_child_wait_status(self, tmp_path, logger, signum):
+        """After a signal, the exit code is the wrapped child's wait() status
+        (-9 from SIGKILL, masked to 247 by sys.exit) — never 128+signum."""
+        tag = f"rc_{signum.name.lower()}"
+        child = _spawn_signal_wrapper(tmp_path, tag)
+        child.send_signal(signum)
+        child.wait(timeout=10)
+        assert child.returncode == (-9) & 0xFF
+        assert child.returncode != 128 + signum
 
     def test_concurrent_wrapper_skips(self, tmp_path_cfg, logger, held_lock):
         """A second wrapper instance should skip when the first holds the lock."""
@@ -441,7 +461,7 @@ class TestWrapperShellFunctionFallback:
         with (
             mock_collect_features([]),
             patch.object(Runner, "resolve", return_value="/bin/true"),
-            patch("gamemode.actions.subprocess.Popen", popen_caller),
+            patch("subprocess.Popen", popen_caller),
         ):
             retcode = action_wrapper(cfg, runner, logger, command)
         assert retcode == 0
@@ -489,3 +509,38 @@ class TestWrapperShellFunctionFallback:
         caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)
         assert caller.call_args.args[0] == ["gm-fake-fn"]
         assert any("not found" in r.message for r in caplog.records)
+
+
+class TestWrapperAudioEnv:
+    """Wrapper mode: PULSE_LATENCY_MSEC reaches the child through the Popen
+    env channel; os.environ is never mutated (SoC, .pi/PLAN.md S7)."""
+
+    def test_wrapper_child_receives_audio_env_without_mutating(
+        self, tmp_path, logger, monkeypatch
+    ):
+        monkeypatch.delenv("PULSE_LATENCY_MSEC", raising=False)
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_audio=True, audio_latency="120")
+        state = _state(cfg)
+        state.init()
+        popen = MagicMock()
+        popen.wait.return_value = 0
+
+        real_popen = subprocess.Popen
+
+        def fake_popen(*args, **kwargs):
+            if args and os.path.basename(str(args[0][0])) in ("ldconfig", "ld"):
+                return real_popen(*args, **kwargs)
+            return popen
+
+        popen_caller = MagicMock(side_effect=fake_popen)
+        with (
+            mock_collect_features([]),
+            patch.object(Runner, "resolve", return_value="/bin/true"),
+            patch("subprocess.Popen", popen_caller),
+        ):
+            retcode = action_wrapper(cfg, Runner(logger), logger, ["/bin/true"])
+        assert retcode == 0
+        env_kwarg = popen_caller.call_args.kwargs.get("env")
+        assert env_kwarg is not None
+        assert env_kwarg["PULSE_LATENCY_MSEC"] == "120"
+        assert "PULSE_LATENCY_MSEC" not in os.environ

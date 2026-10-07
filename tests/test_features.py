@@ -24,7 +24,6 @@ from gamemode.features.scx_scheduler import SCXScheduler
 from gamemode.features.vrr import VRR
 from gamemode.features.wrappers import (
     WRAPPER_FACTORIES,
-    WrapperChain,
     inhibit_wrapper_factory,
     steam_wrapper_factory,
     systemd_run_wrapper_factory,
@@ -41,9 +40,9 @@ class TestVRR:
             assert result.skipped is True
 
     def test_skip_when_not_niri(self, feature_builder, monkeypatch):
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "gnome")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-        monkeypatch.setattr("gamemode.compositor.compositor_is_niri", lambda: False)
+        monkeypatch.setattr(
+            "gamemode.features.vrr.compositor_is_niri", lambda cfg: False
+        )
         vrr, _ = feature_builder(VRR, enable_vrr=True)
         result = vrr.enable()
         assert result.skipped is True
@@ -343,11 +342,12 @@ class TestVRR:
         ) in fake.calls
 
     def test_env_vrr_outputs_drives_enablement(self, monkeypatch, fake_runner, logger):
-        monkeypatch.setenv("VRR_OUTPUTS", "DP-9,HDMI-A-1")
-        monkeypatch.setattr("gamemode.features.vrr.compositor_is_niri", lambda: True)
+        monkeypatch.setattr(
+            "gamemode.features.vrr.compositor_is_niri", lambda cfg: True
+        )
         from gamemode.config import Config
 
-        cfg = Config(runtime_dir="/tmp")
+        cfg = Config(runtime_dir="/tmp", vrr_output_default="DP-9,HDMI-A-1")
         niri_json = json.dumps(
             {
                 "DP-9": {
@@ -535,26 +535,30 @@ class TestAudioPriority:
         result = audio.enable()
         assert result.skipped is True
 
-    def test_enable_sets_env(self, feature_builder, audio_env_cleanup):
+    def test_enable_does_not_mutate_env(self, feature_builder, monkeypatch):
+        """Enable must not leak PULSE_LATENCY_MSEC into os.environ; the
+        audio env file is the contract."""
+        monkeypatch.delenv("PULSE_LATENCY_MSEC", raising=False)
         audio, _ = feature_builder(
             AudioPriority, enable_audio=True, audio_latency="120"
         )
         result = audio.enable()
         assert result.changed is True
-        assert os.environ.get("PULSE_LATENCY_MSEC") == "120"
+        assert "PULSE_LATENCY_MSEC" not in os.environ
 
-    def test_enable_writes_env_file(self, feature_builder, audio_env_cleanup):
+    def test_disable_does_not_touch_env(self, feature_builder, monkeypatch):
+        """Disable must not pop a user-set PULSE_LATENCY_MSEC."""
+        monkeypatch.setenv("PULSE_LATENCY_MSEC", "50")
+        audio, _ = feature_builder(AudioPriority, enable_audio=True)
+        result = audio.disable()
+        assert result.changed is True
+        assert os.environ["PULSE_LATENCY_MSEC"] == "50"
+
+    def test_enable_writes_env_file(self, feature_builder):
         audio, _ = feature_builder(AudioPriority, enable_audio=True, audio_latency="80")
         audio.enable()
         content = audio._cfg.audio_env_file.read_text()
         assert "PULSE_LATENCY_MSEC=80" in content
-
-    def test_disable_clears_env(self, feature_builder):
-        audio, _ = feature_builder(AudioPriority, enable_audio=True)
-        os.environ["PULSE_LATENCY_MSEC"] = "50"
-        result = audio.disable()
-        assert result.changed is True
-        assert "PULSE_LATENCY_MSEC" not in os.environ
 
     def test_disable_removes_env_file(self, feature_builder):
         audio, _ = feature_builder(AudioPriority, enable_audio=True)
@@ -789,7 +793,7 @@ class TestIdleMonitor:
     def test_classify_via_udevadm_keyboard(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.idle_monitor import _IdleMonitorThread
+        from gamemode.input_classifier import classify_input
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -800,12 +804,12 @@ class TestIdleMonitor:
             )
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") == "kbm"
+        assert classify_input("/dev/input/event0") == "kbm"
 
     def test_classify_via_udevadm_mouse(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.idle_monitor import _IdleMonitorThread
+        from gamemode.input_classifier import classify_input
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -816,12 +820,12 @@ class TestIdleMonitor:
             )
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") == "kbm"
+        assert classify_input("/dev/input/event0") == "kbm"
 
     def test_classify_via_udevadm_joystick(self, monkeypatch):
         import subprocess
 
-        from gamemode.features.idle_monitor import _IdleMonitorThread
+        from gamemode.input_classifier import classify_input
 
         def fake_run(*args, **kwargs):
             return subprocess.CompletedProcess(
@@ -832,12 +836,52 @@ class TestIdleMonitor:
             )
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        assert _IdleMonitorThread._classify_via_udevadm("/dev/input/event0") is None
+        assert classify_input("/dev/input/event0") is None
 
     def test_read_bitmap_nonexistent(self):
-        from gamemode.features.idle_monitor import _IdleMonitorThread
+        from gamemode.input_classifier import _read_bitmap
 
-        assert _IdleMonitorThread._read_bitmap("/nonexistent/path") is None
+        assert _read_bitmap("/nonexistent/path") is None
+
+    def _fake_sysfs_device(self, tmp_path, monkeypatch, devname, **bitmaps):
+        """Build a fake /sys/class/input tree under tmp_path for *devname*."""
+        import subprocess
+
+        from gamemode import input_classifier
+
+        def no_udevadm(*args, **kwargs):
+            raise FileNotFoundError
+
+        monkeypatch.setattr(subprocess, "run", no_udevadm)
+        monkeypatch.setattr(input_classifier, "_SYS_CLASS_INPUT", str(tmp_path))
+
+        base = tmp_path / devname / "device"
+        caps = base / "capabilities"
+        caps.mkdir(parents=True)
+        for name, content in bitmaps.items():
+            (caps / name).write_text(content)
+        (base / "properties").write_text(bitmaps.get("properties", ""))
+        return input_classifier
+
+    def test_classify_sysfs_mouse(self, monkeypatch, tmp_path):
+        input_classifier = self._fake_sysfs_device(
+            tmp_path, monkeypatch, "event7", ev="4", rel="1"
+        )  # EV_REL; REL_X
+        assert input_classifier.classify_input("/dev/input/event7") == "kbm"
+
+    def test_classify_sysfs_joystick_excluded(self, monkeypatch, tmp_path):
+        input_classifier = self._fake_sysfs_device(
+            tmp_path, monkeypatch, "event7", ev="200000"
+        )  # EV_FF bit 21
+        assert input_classifier.classify_input("/dev/input/event7") is None
+
+    def test_classify_steam_controller_excluded(self, monkeypatch, tmp_path):
+        input_classifier = self._fake_sysfs_device(
+            tmp_path, monkeypatch, "event7", ev="4", rel="1"
+        )
+        (tmp_path / "event7" / "device" / "id").mkdir(parents=True)
+        (tmp_path / "event7" / "device" / "id" / "vendor").write_text("28de")
+        assert input_classifier.classify_input("/dev/input/event7") is None
 
     def test_on_ac_missing_supply(self, tmp_path):
         from gamemode.features.idle_monitor import _IdleMonitorThread
@@ -846,18 +890,22 @@ class TestIdleMonitor:
         # depends on system; just assert it returns a bool
         assert isinstance(result, bool)
 
-    def test_get_timeout_from_config(self, tmp_path_cfg):
+    def test_get_timeout_from_config(self, tmp_path_cfg, fake_runner):
         from gamemode.features.idle_monitor import _IdleMonitorThread
 
         cfg = _cfg(runtime_dir=str(tmp_path_cfg.runtime_dir), idle_timeout=120)
-        thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
+        thread = _IdleMonitorThread(
+            cfg, logging.getLogger(), threading.Event(), fake_runner
+        )
         assert thread._get_timeout() == 120
 
-    def test_get_timeout_zero_when_no_dms_settings(self, tmp_path):
+    def test_get_timeout_zero_when_no_dms_settings(self, tmp_path, fake_runner):
         from gamemode.features.idle_monitor import _IdleMonitorThread
 
         cfg = _cfg(runtime_dir=str(tmp_path), idle_timeout=0)
-        thread = _IdleMonitorThread(cfg, logging.getLogger(), threading.Event())
+        thread = _IdleMonitorThread(
+            cfg, logging.getLogger(), threading.Event(), fake_runner
+        )
         assert thread._get_timeout() == 0
 
 
@@ -961,30 +1009,6 @@ class TestSystemdRunWrapper:
         r = FakeRunner(logger)
         r.when_resolved("systemd-run", "/usr/bin/systemd-run")
         assert systemd_run_wrapper_factory(cfg, r, logger) is None
-
-
-class TestWrapperChain:
-    def test_add_factory(self, tmp_path, logger):
-        """WrapperChain.add_factory should call factory and add non-None wrappers."""
-        cfg = _cfg(
-            runtime_dir=str(tmp_path),
-            enable_steam=True,
-            steam_script=str(tmp_path / "steam.sh"),
-        )
-        script = tmp_path / "steam.sh"
-        script.write_text("#!/bin/sh\n")
-        script.chmod(0o755)
-        r = Runner(logger)
-        chain = WrapperChain()
-        chain.add_factory(steam_wrapper_factory, cfg, r, logger)
-        result = chain.apply(["mygame"])
-        assert str(script) in result
-
-    def test_apply_empty_chain(self):
-        """WrapperChain.apply with no wrappers should return argv unchanged."""
-        chain = WrapperChain()
-        result = chain.apply(["mygame"])
-        assert result == ["mygame"]
 
 
 class TestWrapperFactories:

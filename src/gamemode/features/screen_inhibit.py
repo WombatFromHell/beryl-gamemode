@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 
 from gamemode.compositor import compositor_is_niri
 from gamemode.config import Config
 from gamemode.feature import FeatureResult, _BaseFeature
 from gamemode.runner import Runner
+
+
+def warn_idle_partial_pair(cfg: Config, log: logging.Logger, detail: str) -> None:
+    """Warn if only one of IDLE_CMD/ACTIVE_CMD is set."""
+    if bool(cfg.idle_cmd) == bool(cfg.active_cmd):
+        return
+    missing = "ACTIVE_CMD" if cfg.idle_cmd else "IDLE_CMD"
+    if cfg.idle_monitor_explicit:
+        log.warning("%s is missing — %s", missing, detail)
+    else:
+        log.warning(
+            "%s is missing — set ENABLE_IDLE_MONITOR=1 to enable with partial pair",
+            missing,
+        )
 
 
 class ScreenInhibit(_BaseFeature):
@@ -19,11 +32,9 @@ class ScreenInhibit(_BaseFeature):
     _DBUS_PATH = "/ScreenSaver"
     _DBUS_IFACE = "org.freedesktop.ScreenSaver"
 
-    _feature_name = "Screen inhibit"
-
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._dms = self.make_checked_cmd(self._DMS_CMD, self._DMS_FEATURE)
+        self._dms = self._run.make_checked_runner(self._DMS_CMD, self._DMS_FEATURE)
         self._dbus_send: str | None = runner.resolve("dbus-send")
         self._screensaver_cookie: int | None = None
         self._idle_thread: threading.Thread | None = None
@@ -124,32 +135,23 @@ class ScreenInhibit(_BaseFeature):
         else:
             self._log.debug("ScreenSaver cookie released: %d", self._screensaver_cookie)
 
-    def _warn_missing_idle_pair(self, partial_msg: str) -> None:
-        if self._cfg.idle_cmd and self._cfg.active_cmd:
-            return
-        missing = "ACTIVE_CMD" if self._cfg.idle_cmd else "IDLE_CMD"
-        if os.environ.get("ENABLE_IDLE_MONITOR") is not None:
-            self._log.warning("%s is missing — %s", missing, partial_msg)
-        else:
-            self._log.warning(
-                "%s is missing — set ENABLE_IDLE_MONITOR=1 to enable idle monitor "
-                "with partial pair",
-                missing,
-            )
-
     def _start_idle_monitor(self) -> str | None:
         if not self._cfg.enable_idle_monitor:
             return None
         if not self._cfg.idle_cmd or not self._cfg.active_cmd:
-            self._warn_missing_idle_pair("idle monitor started with partial pair")
-            if os.environ.get("ENABLE_IDLE_MONITOR") is None:
+            warn_idle_partial_pair(
+                self._cfg, self._log, "idle monitor started with partial pair"
+            )
+            if not self._cfg.idle_monitor_explicit:
                 return None
         if self._idle_thread is not None:
             return "idle monitor already running"
         self._idle_stop.clear()
         from gamemode.features.idle_monitor import _IdleMonitorThread
 
-        self._idle_thread = _IdleMonitorThread(self._cfg, self._log, self._idle_stop)
+        self._idle_thread = _IdleMonitorThread(
+            self._cfg, self._log, self._idle_stop, self._run
+        )
         self._idle_thread.start()
         self._log.debug("Idle monitor thread started")
         return "idle monitor started"
@@ -159,8 +161,8 @@ class ScreenInhibit(_BaseFeature):
             if self._cfg.enable_idle_monitor and (
                 not self._cfg.idle_cmd or not self._cfg.active_cmd
             ):
-                self._warn_missing_idle_pair(
-                    "idle state may not be restored on cleanup"
+                warn_idle_partial_pair(
+                    self._cfg, self._log, "idle state may not be restored on cleanup"
                 )
             return None
         self._idle_stop.set()
@@ -168,13 +170,13 @@ class ScreenInhibit(_BaseFeature):
         self._idle_thread = None
         self._log.debug("Idle monitor thread stopped")
         if self._cfg.enable_idle_monitor and self._cfg.active_cmd:
-            from gamemode.features.idle_monitor import _IdleMonitorThread
-
-            _IdleMonitorThread._fire(self._cfg.active_cmd)
+            self._run.spawn(self._cfg.active_cmd, shell=True)
         if self._cfg.enable_idle_monitor and (
             not self._cfg.idle_cmd or not self._cfg.active_cmd
         ):
-            self._warn_missing_idle_pair("idle state may not be restored on cleanup")
+            warn_idle_partial_pair(
+                self._cfg, self._log, "idle state may not be restored on cleanup"
+            )
         return "idle monitor stopped"
 
     def _do_enable(self) -> FeatureResult:
@@ -193,7 +195,7 @@ class ScreenInhibit(_BaseFeature):
         idle_msg = self._stop_idle_monitor()
         if idle_msg:
             results.append(idle_msg)
-        if compositor_is_niri():
+        if compositor_is_niri(self._cfg):
             self._dms_inhibit_disable()
             results.append("DMS inhibit disabled")
         self._screensaver_inhibit_disable()
@@ -201,7 +203,7 @@ class ScreenInhibit(_BaseFeature):
         return FeatureResult(changed=True, detail="; ".join(results))
 
     def _try_dms_inhibit(self, results: list[str]) -> None:
-        if not compositor_is_niri():
+        if not compositor_is_niri(self._cfg):
             return
         if self._dms_inhibit_enable():
             results.append("DMS inhibit enabled")

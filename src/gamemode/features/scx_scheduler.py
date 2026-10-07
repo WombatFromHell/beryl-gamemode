@@ -10,11 +10,9 @@ from gamemode.runner import Runner
 
 
 class SCXScheduler(_BaseFeature):
-    _feature_name = "SCX scheduler"
-
     def __init__(self, config: Config, runner: Runner, log: logging.Logger) -> None:
         super().__init__(config, runner, log)
-        self._scxctl = self.make_checked_cmd("scxctl", "SCX scheduler")
+        self._scxctl = self._run.make_checked_runner("scxctl", "SCX scheduler")
 
     @property
     def _feature_enabled(self) -> bool:

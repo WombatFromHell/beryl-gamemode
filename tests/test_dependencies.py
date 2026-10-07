@@ -131,6 +131,29 @@ class TestValidateDeps:
         assert "scxctl" in caplog.text
         assert "jq" in caplog.text
 
+    def test_missing_niri_fails_when_vrr_enabled(self, tmp_path, logger):
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_vrr=True)
+        r = FakeRunner(logger)
+        r.when_resolved("jq", "/usr/bin/jq")
+        r.when_resolved("niri", None)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is False
+
+    def test_missing_dms_fails_when_inhibit_enabled(self, tmp_path, logger):
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_inhibit=True)
+        r = FakeRunner(logger)
+        r.when_resolved("dbus-send", "/usr/bin/dbus-send")
+        r.when_resolved("dms", None)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is False
+
+    def test_missing_niri_passes_when_vrr_disabled(self, tmp_path, logger):
+        cfg = _cfg(runtime_dir=str(tmp_path), enable_vrr=False)
+        r = FakeRunner(logger)
+        r.when_resolved("niri", None)
+        ok = validate_deps(cfg, r, logger)
+        assert ok is True
+
     def test_audio_steam_no_dep_checks(self, tmp_path, logger):
         """enable_audio and enable_steam have no dep checks and should not trigger any."""
         cfg = _cfg(

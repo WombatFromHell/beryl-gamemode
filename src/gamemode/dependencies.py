@@ -5,21 +5,16 @@ from __future__ import annotations
 import logging
 
 from gamemode.config import Config
+from gamemode.registry import FEATURES
 from gamemode.runner import Runner
 
 
 def validate_deps(config: Config, runner: Runner, log: logging.Logger) -> bool:
-    checks: dict[str, bool] = {
-        "tuned-adm": config.enable_tuned,
-        "systemd-inhibit": config.enable_sleep_inhibit,
-        "dbus-send": config.enable_inhibit,
-        "scxctl": config.enable_scx,
-        "jq": config.enable_vrr,
-    }
     missing = [
         cmd
-        for cmd, enabled in checks.items()
-        if enabled and runner.resolve(cmd) is None
+        for spec in FEATURES.values()
+        for cmd, flag in spec.deps
+        if getattr(config, flag) and runner.resolve(cmd) is None
     ]
     if missing:
         log.error("Missing dependencies: %s", " ".join(missing))

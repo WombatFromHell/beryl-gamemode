@@ -52,15 +52,6 @@ class StateManager:
             self._unlock(fd)
             self._close_lock_fd(fd, lock_path)
 
-    def is_lock_held(self) -> bool:
-        lock_path = self._config.lock_file
-        fd = os.open(str(lock_path), os.O_CREAT | os.O_WRONLY)
-        try:
-            return not self._try_lock(fd)
-        finally:
-            self._unlock(fd)
-            self._close_lock_fd(fd, lock_path)
-
     def _read_state(self) -> dict[str, Any]:
         try:
             return json.loads(self._config.state_file.read_text())

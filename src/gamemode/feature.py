@@ -4,25 +4,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from gamemode.config import Config
-from gamemode.runner import CheckedCommandRunner, Runner
+from gamemode.runner import Runner
 
 
+@dataclass
 class FeatureResult:
-    __slots__ = ("changed", "detail", "ok", "skipped")
-
-    def __init__(
-        self,
-        ok: bool = True,
-        skipped: bool = False,
-        changed: bool = False,
-        detail: str = "",
-    ) -> None:
-        self.ok = ok
-        self.skipped = skipped
-        self.changed = changed
-        self.detail = detail
+    ok: bool = True
+    skipped: bool = False
+    changed: bool = False
+    detail: str = ""
 
     def __repr__(self) -> str:
         if self.skipped:
@@ -62,9 +55,6 @@ class _BaseFeature:
 
     # -- abstract hooks --------------------------------------------------
 
-    _feature_name: str = ""
-    """Human-readable name for logging; override in subclasses."""
-
     @property
     def _feature_enabled(self) -> bool:
         """Return the config flag that gates this feature."""
@@ -89,10 +79,6 @@ class _BaseFeature:
         if not self._feature_enabled:
             return FeatureResult.skip("disabled by config")
         return self._do_disable()
-
-    def make_checked_cmd(self, cmd: str, feature: str = "") -> CheckedCommandRunner:
-        """Create a CheckedCommandRunner via the base runner."""
-        return self._run.make_checked_runner(cmd, feature)
 
 
 def log_feature_result(name: str, result: FeatureResult, log: logging.Logger) -> None:

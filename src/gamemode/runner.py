@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from typing import Any
@@ -39,6 +40,24 @@ class Runner:
         except FileNotFoundError:
             self._log.error("command not found: %s", args[0])
             raise
+
+    def spawn(
+        self,
+        args: list[str] | str,
+        env: dict[str, str] | None = None,
+        *,
+        shell: bool = False,
+        start_new_session: bool = False,
+    ) -> subprocess.Popen:
+        """Spawn a child process (fire-and-forget or wait pattern).
+
+        *env* is merged over ``os.environ``; ``None`` means inherit.
+        """
+        self._log.debug("exec: %s", args if isinstance(args, str) else " ".join(args))
+        merged_env = {**os.environ, **env} if env else None
+        return subprocess.Popen(
+            args, env=merged_env, shell=shell, start_new_session=start_new_session
+        )
 
     def capture(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         return self.run(args, capture_output=True, text=True)

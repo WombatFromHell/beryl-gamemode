@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
-from functools import lru_cache
 
 from gamemode.config import Config
 
 
-def _session_contains(substring: str) -> bool:
-    session = os.environ.get("XDG_SESSION_DESKTOP", "")
-    current = os.environ.get("XDG_CURRENT_DESKTOP", "")
+def _session_contains(config: Config, substring: str) -> bool:
+    session = config.xdg_session_desktop
+    current = config.xdg_current_desktop
     return substring in (session + current).lower()
 
 
-@lru_cache(maxsize=1)
-def compositor_is_niri() -> bool:
-    if _session_contains("niri"):
+def compositor_is_niri(config: Config) -> bool:
+    if _session_contains(config, "niri"):
         return True
     if shutil.which("pgrep") is None:
         return False
@@ -33,9 +30,9 @@ def compositor_is_niri() -> bool:
     )
 
 
-def session_is_kde() -> bool:
-    return _session_contains("kde")
+def session_is_kde(config: Config) -> bool:
+    return _session_contains(config, "kde")
 
 
 def output_resolve(config: Config) -> str:
-    return os.environ.get("NIRI_OUTPUT_NAME", config.vrr_output_default)
+    return config.niri_output_name or config.vrr_output_default

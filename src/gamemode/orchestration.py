@@ -7,11 +7,7 @@ import logging
 
 from gamemode.config import Config
 from gamemode.feature import _BaseFeature, log_feature_result
-from gamemode.features.audio_priority import AudioPriority
-from gamemode.features.power_profile import PowerProfile
-from gamemode.features.screen_inhibit import ScreenInhibit
-from gamemode.features.scx_scheduler import SCXScheduler
-from gamemode.features.vrr import VRR
+from gamemode.registry import FEATURES
 from gamemode.runner import Runner
 
 
@@ -19,38 +15,25 @@ def collect_features(
     config: Config, runner: Runner, log: logging.Logger
 ) -> collections.abc.Sequence[tuple[str, _BaseFeature]]:
     result: list[tuple[str, _BaseFeature]] = []
-    for name, feat in [
-        ("tuned", PowerProfile(config, runner, log)),
-        ("vrr", VRR(config, runner, log)),
-        ("scx", SCXScheduler(config, runner, log)),
-        ("audio", AudioPriority(config, runner, log)),
-        ("inhibit", ScreenInhibit(config, runner, log)),
-    ]:
-        if name in config.toggle_features:
-            result.append((name, feat))
+    for name, spec in FEATURES.items():
+        if spec.factory is not None and name in config.toggle_features:
+            result.append((name, spec.factory(config, runner, log)))
     return result
-
-
-def _apply_features(
-    features: collections.abc.Sequence[tuple[str, _BaseFeature]],
-    log: logging.Logger,
-    method: str,
-) -> None:
-    log.debug("%sing features", method.capitalize())
-    for name, feat in features:
-        result = getattr(feat, method)()
-        log_feature_result(name, result, log)
 
 
 def features_enable(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     log: logging.Logger,
 ) -> None:
-    _apply_features(features, log, "enable")
+    log.debug("Enabling features")
+    for name, feat in features:
+        log_feature_result(name, feat.enable(), log)
 
 
 def features_disable(
     features: collections.abc.Sequence[tuple[str, _BaseFeature]],
     log: logging.Logger,
 ) -> None:
-    _apply_features(features, log, "disable")
+    log.debug("Disabling features")
+    for name, feat in features:
+        log_feature_result(name, feat.disable(), log)

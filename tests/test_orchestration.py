@@ -5,7 +5,6 @@ import logging
 from conftest import FakeFeature, _cfg
 
 from gamemode.orchestration import (
-    _apply_features,
     collect_features,
     features_disable,
     features_enable,
@@ -56,10 +55,10 @@ class TestFeatureOrchestration:
         assert f1.disable_calls == [True]
         assert f2.disable_calls == [True]
 
-    def test_apply_features_logging(self, logger, caplog):
-        """_apply_features should log the method and output."""
+    def test_features_enable_logging(self, logger, caplog):
+        """features_enable should log the feature results."""
         caplog.set_level(logging.DEBUG)
         f1 = FakeFeature("f1")
         features = [("f1", f1)]
-        _apply_features(features, logger, "enable")
+        features_enable(features, logger)
         assert any("features" in r.message.lower() for r in caplog.records)

@@ -76,25 +76,3 @@ WRAPPER_FACTORIES: dict[str, WrapperFactory] = {
     "inhibit": inhibit_wrapper_factory,
     "systemd_run": systemd_run_wrapper_factory,
 }
-
-
-class WrapperChain:
-    def __init__(self) -> None:
-        self._wrappers: list[CommandWrapper] = []
-
-    def add_factory(
-        self,
-        factory: WrapperFactory,
-        config: Config,
-        runner: Runner,
-        log: logging.Logger,
-    ) -> None:
-        wrapper = factory(config, runner, log)
-        if wrapper is not None:
-            self._wrappers.append(wrapper)
-
-    def apply(self, argv: list[str]) -> list[str]:
-        result = list(argv)
-        for wrapper in self._wrappers:
-            result = wrapper(result)
-        return result

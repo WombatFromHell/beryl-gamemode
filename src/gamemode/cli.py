@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 
 from gamemode.__version__ import _get_version
 from gamemode.actions import action_off, action_on, action_status, action_wrapper
-from gamemode.config import Config, load_config_file
+from gamemode.config import Config
 from gamemode.dependencies import validate_deps
+from gamemode.features.screen_inhibit import warn_idle_partial_pair
 from gamemode.logging_setup import setup_logging
+from gamemode.registry import default_toggle_string
 from gamemode.runner import Runner
 
 
@@ -40,7 +41,7 @@ CONFIGURATION:
   Env vars override file values.
 
 FEATURE ROUTING (comma-separated, case-insensitive):
-  TOGGLE_FEATURES   Applied by 'on'/'off'. Default: vrr,scx,tuned,audio,inhibit,steam
+  TOGGLE_FEATURES   Applied by 'on'/'off'. Default: {_toggle_default_}
   WRAPPER_FEATURES  Applied by wrapper mode. Default: systemd_run,steam,inhibit
 
 ENVIRONMENT:
@@ -106,7 +107,11 @@ EXAMPLES:
 
 def _get_usage() -> str:
     cmd = _invocation_name()
-    return USAGE_TEMPLATE.format(cmd=cmd, _version_=_get_version())
+    return USAGE_TEMPLATE.format(
+        cmd=cmd,
+        _version_=_get_version(),
+        _toggle_default_=default_toggle_string(),
+    )
 
 
 VERSION = "Gamemode " + _get_version()
@@ -115,12 +120,12 @@ VERSION = "Gamemode " + _get_version()
 def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv:
+    if not argv or argv[0] in ("-h", "--help"):
         print(_get_usage(), end="")
-        return None, []
-    if argv[0] in ("-h", "--help"):
-        print(_get_usage(), end="")
-        return None, []
+        return "help", []
+    if argv[0] in ("-V", "--version"):
+        print(VERSION)
+        return "version", []
     mode = argv[0]
     if mode in ("on", "off", "status"):
         return mode, []
@@ -134,56 +139,29 @@ def cli_parse(argv: list[str] | None = None) -> tuple[str | None, list[str]]:
     return "wrapper", argv
 
 
-def _warn_idle_missing_pair(config: Config, log: logging.Logger, mode: str) -> None:
-    """Warn if idle monitor config has only one of IDLE_CMD/ACTIVE_CMD."""
-    if mode not in ("on", "wrapper"):
-        return
-    idle_only = bool(config.idle_cmd) != bool(config.active_cmd)
-    if not idle_only:
-        return
-    missing = "ACTIVE_CMD" if config.idle_cmd else "IDLE_CMD"
-    if os.environ.get("ENABLE_IDLE_MONITOR") is not None:
-        log.warning(
-            "IDLE_CMD and ACTIVE_CMD must both be set for a safe (idempotent) idle monitor; "
-            "%s is missing — idle monitor enabled with partial pair",
-            missing,
-        )
-    else:
-        log.warning(
-            "IDLE_CMD and ACTIVE_CMD must both be set for a safe (idempotent) idle monitor; "
-            "%s is missing — set ENABLE_IDLE_MONITOR=1 to enable with partial pair",
-            missing,
-        )
-
-
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv or argv[0] in ("-h", "--help"):
-        print(_get_usage(), end="")
-        return 0
-    if argv[0] in ("-V", "--version"):
-        print(VERSION)
-        return 0
-
-    load_config_file()
-
-    config = Config()
-    debug = os.environ.get("GAMEMODE_DEBUG", "") in ("1", "true", "yes")
-    log = setup_logging(config, to_file=debug, debug=debug)
     mode, command = cli_parse(argv)
     if mode is None:
         return 1
+    if mode in ("help", "version"):
+        return 0
 
+    config = Config.from_env()
+    debug = config.debug
+    log = setup_logging(config, to_file=debug, debug=debug)
     runner = Runner(log)
     if not validate_deps(config, runner, log):
         return 1
 
-    _warn_idle_missing_pair(config, log, mode)
+    if mode in ("on", "wrapper"):
+        warn_idle_partial_pair(config, log, "idle monitor enabled with partial pair")
 
-    return {
-        "on": lambda: action_on(config, runner, log),
-        "off": lambda: action_off(config, runner, log),
-        "status": lambda: action_status(config),
-        "wrapper": lambda: action_wrapper(config, runner, log, command),
-    }[mode]()
+    if mode == "on":
+        return action_on(config, runner, log)
+    if mode == "off":
+        return action_off(config, runner, log)
+    if mode == "status":
+        return action_status(config)
+    return action_wrapper(config, runner, log, command)

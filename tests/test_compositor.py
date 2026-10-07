@@ -8,73 +8,54 @@ from gamemode.compositor import (
     output_resolve,
     session_is_kde,
 )
+from gamemode.config import Config
 
 
 class TestCompositorDetection:
-    def test_niri_via_env(self, monkeypatch):
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "niri")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-        compositor_is_niri.cache_clear()
-        assert _session_contains("niri") is True
-        assert compositor_is_niri() is True
+    def test_niri_via_env(self):
+        cfg = Config(xdg_session_desktop="niri")
+        assert _session_contains(cfg, "niri") is True
+        assert compositor_is_niri(cfg) is True
 
-    def test_kde_via_env(self, monkeypatch):
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "KDE")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-        assert _session_contains("kde") is True
-        assert session_is_kde() is True
+    def test_kde_via_env(self):
+        cfg = Config(xdg_session_desktop="KDE")
+        assert _session_contains(cfg, "kde") is True
+        assert session_is_kde(cfg) is True
 
-    def test_not_kde(self, monkeypatch):
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "niri")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
-        assert _session_contains("kde") is False
-        assert session_is_kde() is False
+    def test_not_kde(self):
+        cfg = Config(xdg_session_desktop="niri")
+        assert _session_contains(cfg, "kde") is False
+        assert session_is_kde(cfg) is False
 
-    def test_niri_pgrep_fallback(self, monkeypatch):
+    def test_niri_pgrep_fallback(self):
         """When env vars are unset but pgrep finds niri, should return True."""
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "gnome")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
+        cfg = Config(xdg_session_desktop="gnome")
         with (
             patch("shutil.which", return_value="/usr/bin/pgrep"),
-            patch(
-                "subprocess.run",
-                returncode=0,
-                create=True,
-            ) as mock_run,
+            patch("subprocess.run") as mock_run,
         ):
             mock_run.return_value.returncode = 0
-            # Clear the lru_cache to force re-evaluation
-            compositor_is_niri.cache_clear()
-            assert compositor_is_niri() is True
+            assert compositor_is_niri(cfg) is True
 
-    def test_niri_pgrep_not_available(self, monkeypatch):
+    def test_niri_pgrep_not_available(self):
         """When pgrep is not available, should return False."""
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "gnome")
-        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
+        cfg = Config(xdg_session_desktop="gnome")
         with patch("shutil.which", return_value=None):
-            compositor_is_niri.cache_clear()
-            assert compositor_is_niri() is False
+            assert compositor_is_niri(cfg) is False
 
-    def test_session_contains_xdg_current_desktop(self, monkeypatch):
+    def test_session_contains_xdg_current_desktop(self):
         """_session_contains should check XDG_CURRENT_DESKTOP, not just XDG_SESSION_DESKTOP."""
-        monkeypatch.setenv("XDG_SESSION_DESKTOP", "gnome")
-        monkeypatch.setenv("XDG_CURRENT_DESKTOP", "niri")
-        assert _session_contains("niri") is True
+        cfg = Config(xdg_session_desktop="gnome", xdg_current_desktop="niri")
+        assert _session_contains(cfg, "niri") is True
 
 
 class TestOutputResolve:
-    def test_default(self, tmp_path_cfg, monkeypatch):
-        monkeypatch.delenv("NIRI_OUTPUT_NAME", raising=False)
-        monkeypatch.delenv("VRR_OUTPUTS", raising=False)
-        assert output_resolve(tmp_path_cfg) == ""
+    def test_default(self):
+        assert output_resolve(Config(runtime_dir="/tmp")) == ""
 
-    def test_env_override(self, tmp_path_cfg, monkeypatch):
-        monkeypatch.setenv("NIRI_OUTPUT_NAME", "HDMI-A-1")
-        assert output_resolve(tmp_path_cfg) == "HDMI-A-1"
+    def test_niri_output_name_override(self):
+        assert output_resolve(Config(niri_output_name="HDMI-A-1")) == "HDMI-A-1"
 
-    def test_env_vrr_outputs(self, monkeypatch):
-        monkeypatch.setenv("VRR_OUTPUTS", "HDMI-A-1,DP-4")
-        monkeypatch.delenv("NIRI_OUTPUT_NAME", raising=False)
-        from gamemode.config import Config
-
-        assert output_resolve(Config(runtime_dir="/tmp")) == "HDMI-A-1,DP-4"
+    def test_vrr_outputs_default(self):
+        cfg = Config(runtime_dir="/tmp", vrr_output_default="HDMI-A-1,DP-4")
+        assert output_resolve(cfg) == "HDMI-A-1,DP-4"
