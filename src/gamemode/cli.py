@@ -31,6 +31,9 @@ MODES:
   -- <command>    Wrapper mode: enable features, run <command>, auto-cleanup on exit
                   Applies WRAPPER_FEATURES only. Skips features if 'on' was already run.
                   <command> may also be given without -- (bare command is wrapper mode).
+                  If <command> isn't an executable (e.g. a shell function), it runs
+                  via $SHELL: fish works as-is; bash needs it in ~/.bashrc, zsh in
+                  ~/.zshenv; sh has no fallback — wrap it in a real executable then.
 
 CONFIGURATION:
   File: $HOME/.config/gamemode.conf (KEY=VALUE format, # comments supported)

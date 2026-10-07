@@ -7,6 +7,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -20,7 +21,39 @@ from gamemode.feature import _BaseFeature
 from gamemode.features.wrappers import WRAPPER_FACTORIES, WrapperChain
 from gamemode.orchestration import collect_features, features_disable, features_enable
 from gamemode.runner import Runner
+from gamemode.shell_fallback import shell_fallback
 from gamemode.state import StateManager
+
+
+def _negotiate_command(
+    command: list[str], log: logging.Logger
+) -> tuple[list[str], dict[str, str]]:
+    """Resolve *command* to an argv that exec can run.
+
+    Shell functions live in the parent shell's memory and are invisible to
+    PATH resolution, so a command that isn't an executable is rerouted
+    through $SHELL when a mechanism exists (see shell_fallback).
+    Returns (argv, extra_env); extra_env is Popen-scoped only.
+    """
+    if "/" in command[0] or shutil.which(command[0]) is not None:
+        return command, {}
+    fallback = shell_fallback(command)
+    if fallback is None:
+        log.warning(
+            "Command '%s' not found in PATH and no shell-function fallback "
+            "for SHELL=%s — attempting as-is (wrap it in a real executable "
+            "to make it work everywhere)",
+            command[0],
+            os.environ.get("SHELL", "<unset>"),
+        )
+        return command, {}
+    argv, extra_env = fallback
+    log.info(
+        "Command '%s' not in PATH — shell-function fallback: %s",
+        command[0],
+        " ".join(argv),
+    )
+    return argv, extra_env
 
 
 def _prepare_base(config: Config, log: logging.Logger) -> StateManager:
@@ -184,10 +217,14 @@ def _run_child(
     exec_cmd: list[str],
     log: logging.Logger,
     cleanup: collections.abc.Callable[[], None],
+    env: dict[str, str] | None = None,
 ) -> int:
     child_proc: list[subprocess.Popen | None] = [None]
+    popen_env = {**os.environ, **env} if env else None
     try:
-        child_proc[0] = subprocess.Popen(exec_cmd, start_new_session=True)
+        child_proc[0] = subprocess.Popen(
+            exec_cmd, start_new_session=True, env=popen_env
+        )
     except OSError as exc:
         log.error("Failed to execute command: %s", exc)
         cleanup()
@@ -210,6 +247,7 @@ def action_wrapper(
     output = output_resolve(config)
     state = _prepare_base(config, log)
     log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
+    argv, extra_env = _negotiate_command(command, log)
     _watch_parent(log)
 
     with state.locked() as acquired:
@@ -218,7 +256,7 @@ def action_wrapper(
                 "Prior gamemode session holds the lock — WrapperChain disabled, passing through command without wrappers"
             )
             cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(command, log, cleanup)
+            return _run_child(argv, log, cleanup, extra_env)
 
         # Stale wrapper state (pid dead) should not block a new wrapper.
         if state.is_wrapper and state.pid() is not None and not state.pid_alive():
@@ -234,7 +272,7 @@ def action_wrapper(
                 state.mode,
             )
             cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(command, log, cleanup)
+            return _run_child(argv, log, cleanup, extra_env)
 
         state.mark_wrapper(command)
         features = collect_features(config, runner, log)
@@ -247,5 +285,5 @@ def action_wrapper(
             if name in config.wrapper_features:
                 chain.add_factory(factory, config, runner, log)
 
-        exec_cmd = chain.apply(command)
-        return _run_child(exec_cmd, log, cleanup)
+        exec_cmd = chain.apply(argv)
+        return _run_child(exec_cmd, log, cleanup, extra_env)

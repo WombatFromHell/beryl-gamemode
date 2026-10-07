@@ -1,5 +1,7 @@
 """Tests for CLI parser module."""
 
+import shutil
+
 import pytest
 
 from gamemode.cli import cli_parse, main
@@ -42,10 +44,22 @@ class TestMain:
         ret = main(["--version"])
         assert ret == 0
 
-    def test_main_unknown_subcommand(self, disabled_features_env, capsys):
-        """main with unknown subcommand should return 1."""
+    def test_main_unknown_subcommand(self, disabled_features_env, capsys, monkeypatch):
+        """Unknown bare command with no shell fallback -> 1 (OSError path)."""
+        monkeypatch.setenv("SHELL", "/bin/sh")
         ret = main(["unknown"])
         assert ret == 1
+
+    def test_main_unknown_subcommand_fish_fallback(
+        self, disabled_features_env, capsys, monkeypatch
+    ):
+        """Unknown bare command with a fish fallback -> fish's 127 propagates."""
+        fish = shutil.which("fish")
+        if fish is None:
+            pytest.skip("fish not installed")
+        monkeypatch.setenv("SHELL", fish)
+        ret = main(["gm-does-not-exist"])
+        assert ret == 127
 
     def test_main_empty_argv_returns_usage(self, disabled_features_env, capsys):
         """main with empty argv should print usage and return 0."""

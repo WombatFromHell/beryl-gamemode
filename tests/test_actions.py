@@ -5,9 +5,10 @@ import ctypes.util
 import json
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import FakeFeature, _cfg, _state, mock_collect_features, spawn_child
@@ -53,7 +54,7 @@ class TestActionWrapper:
             tmp_path,
             f"""
 import sys, os, time, json, signal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from contextlib import contextmanager
 sys.path.insert(0, {gamemode_dir!r})
 from gamemode.config import Config
@@ -241,7 +242,7 @@ class TestStateManagerLockLifetime:
             tmp_path,
             f"""
 import sys, os, time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 sys.path.insert(0, {gamemode_dir!r})
 from gamemode.config import Config
 from gamemode.feature import FeatureResult
@@ -408,3 +409,83 @@ class TestCleanupClosure:
         )
         cleanup()
         assert state.is_active
+
+
+class TestWrapperShellFunctionFallback:
+    """A command missing from PATH falls back to $SHELL (see .pi/PLAN.md).
+
+    The smoketest (tests/smoketest_shell_function.py) proves the per-shell
+    mechanisms; these tests prove action_wrapper negotiates and applies
+    them. Popen is mocked — no real shells are spawned here.
+    """
+
+    def _run(self, tmp_path, logger, command, popen):
+        """Run action_wrapper with Popen mocked for the child.
+
+        ctypes.util.find_library (from _watch_parent) also Popen's
+        /sbin/ldconfig, so delegate those calls to the real Popen.
+        """
+
+        real_popen = subprocess.Popen
+
+        def fake_popen(*args, **kwargs):
+            if args and os.path.basename(str(args[0][0])) in ("ldconfig", "ld"):
+                return real_popen(*args, **kwargs)
+            return popen
+
+        popen_caller = MagicMock(side_effect=fake_popen)
+        cfg = _cfg(runtime_dir=str(tmp_path))
+        state = _state(cfg)
+        state.init()
+        runner = Runner(logger)
+        with (
+            mock_collect_features([]),
+            patch.object(Runner, "resolve", return_value="/bin/true"),
+            patch("gamemode.actions.subprocess.Popen", popen_caller),
+        ):
+            retcode = action_wrapper(cfg, runner, logger, command)
+        assert retcode == 0
+        assert state.mode == ""
+        return popen_caller
+
+    def _popen_mock(self):
+        """The mock child process (Popen's return value)."""
+        popen = MagicMock()
+        popen.wait.return_value = 0
+        return popen
+
+    def test_fallback_fish(self, tmp_path, logger, monkeypatch):
+        """SHELL=fish, fn not on PATH -> spawn `fish -c <joined>`."""
+        monkeypatch.setenv("SHELL", "/bin/fish")
+        popen = self._popen_mock()
+        caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)
+        assert caller.call_args.args[0] == ["/bin/fish", "-c", "gm-fake-fn"]
+        assert caller.call_args.kwargs.get("env") is None
+
+    def test_no_fallback_when_command_found(self, tmp_path, logger, monkeypatch):
+        """A PATH command must never be rerouted through a shell."""
+        monkeypatch.setenv("SHELL", "/bin/fish")
+        popen = self._popen_mock()
+        caller = self._run(tmp_path, logger, ["/bin/true"], popen)
+        assert caller.call_args.args[0] == ["/bin/true"]
+
+    def test_bash_fallback_env_is_popen_scoped(self, tmp_path, logger, monkeypatch):
+        """BASH_ENV goes to the child's env only, never os.environ."""
+        rc = tmp_path / ".bashrc"
+        rc.write_text("# defs\n")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("SHELL", "/bin/bash")
+        popen = self._popen_mock()
+        caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)
+        argv, kwargs = caller.call_args.args, caller.call_args.kwargs
+        assert argv[0] == ["/bin/bash", "-c", "gm-fake-fn"]
+        assert kwargs["env"]["BASH_ENV"] == str(rc)
+        assert "BASH_ENV" not in os.environ
+
+    def test_no_fallback_unsupported_shell(self, tmp_path, logger, monkeypatch, caplog):
+        """SHELL=sh: no mechanism exists -> run as-is and warn."""
+        monkeypatch.setenv("SHELL", "/bin/sh")
+        popen = self._popen_mock()
+        caller = self._run(tmp_path, logger, ["gm-fake-fn"], popen)
+        assert caller.call_args.args[0] == ["gm-fake-fn"]
+        assert any("not found" in r.message for r in caplog.records)
