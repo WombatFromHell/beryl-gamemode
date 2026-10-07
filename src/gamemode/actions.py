@@ -163,7 +163,9 @@ def _build_cleanup_closure(
 
 
 @contextmanager
-def _signal_guard(log: logging.Logger, child_proc: list[Popen | None]) -> Iterator[int]:
+def _signal_guard(
+    log: logging.Logger, child_proc: list[Popen | None]
+) -> Iterator[list[int]]:
     pending_signal = [0]
     _orig_handlers: dict[int, Any] = {}
 
@@ -185,11 +187,11 @@ def _signal_guard(log: logging.Logger, child_proc: list[Popen | None]) -> Iterat
     for sig in signals_to_hook:
         try:
             _orig_handlers[sig] = signal.signal(sig, _handler)
-        except (ValueError, OSError):
-            pass
+        except (ValueError, OSError) as exc:
+            log.warning("Could not install handler for %s: %s", sig, exc)
 
     try:
-        yield pending_signal[0]
+        yield pending_signal
     finally:
         for sig, orig in _orig_handlers.items():
             try:
@@ -217,9 +219,10 @@ def _run_child(
     runner: Runner,
     log: logging.Logger,
     cleanup: collections.abc.Callable[[], None],
+    child_proc: list[Popen | None],
+    pending: list[int],
     env: dict[str, str] | None = None,
 ) -> int:
-    child_proc: list[Popen | None] = [None]
     try:
         child_proc[0] = runner.spawn(exec_cmd, env=env, start_new_session=True)
     except OSError as exc:
@@ -227,8 +230,11 @@ def _run_child(
         cleanup()
         return 1
 
-    with _signal_guard(log, child_proc):
-        retcode = child_proc[0].wait()
+    # A signal may have arrived before spawn; kill the child so wait() reports
+    # the child's wait status, not the wrapper's own signal death.
+    if pending[0]:
+        child_proc[0].kill()
+    retcode = child_proc[0].wait()
     cleanup()
     return retcode
 
@@ -239,48 +245,61 @@ def action_wrapper(
     log: logging.Logger,
     command: list[str],
 ) -> int:
-    output = output_resolve(config)
-    state = _prepare_base(config, log)
-    log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
-    argv, extra_env = _negotiate_command(command, log, config)
-    _watch_parent(log)
+    # Install signal handlers before any slow setup (find_library, locks,
+    # feature collection): a signal arriving during startup must be handled
+    # and reported as the child's wait status, never left to Python's default
+    # disposition (which kills the wrapper with -signum).
+    child_proc: list[Popen | None] = [None]
+    with _signal_guard(log, child_proc) as pending:
+        output = output_resolve(config)
+        state = _prepare_base(config, log)
+        log.info("Wrapper mode (output: %s, command: %s)", output, " ".join(command))
+        argv, extra_env = _negotiate_command(command, log, config)
+        _watch_parent(log)
 
-    with state.locked() as acquired:
-        if not acquired:
-            log.warning(
-                "Prior gamemode session holds the lock — wrappers disabled, passing through command"
+        with state.locked() as acquired:
+            if not acquired:
+                log.warning(
+                    "Prior gamemode session holds the lock — wrappers disabled, passing through command"
+                )
+                cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
+                return _run_child(
+                    argv, runner, log, cleanup, child_proc, pending, extra_env
+                )
+
+            # Stale wrapper state (pid dead) should not block a new wrapper.
+            if state.is_wrapper and state.pid() is not None and not state.pid_alive():
+                log.info(
+                    "Stale wrapper state detected (pid %s not alive), clearing",
+                    state.pid(),
+                )
+                state.clear()
+
+            already_active = state.is_active or state.is_wrapper
+            if already_active:
+                log.warning(
+                    "Prior gamemode session active (%s) — wrappers disabled, passing through command",
+                    state.mode,
+                )
+                cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
+                return _run_child(
+                    argv, runner, log, cleanup, child_proc, pending, extra_env
+                )
+
+            state.mark_wrapper(command)
+            features = collect_features(config, runner, log)
+            features_enable(features, log)
+            if config.enable_audio:
+                extra_env = {**extra_env, "PULSE_LATENCY_MSEC": config.audio_latency}
+
+            cleanup = _build_cleanup_closure(features, log, state, preserve_state=False)
+
+            exec_cmd = list(argv)
+            for name, factory in WRAPPER_FACTORIES.items():
+                if name in config.wrapper_features:
+                    wrapper = factory(config, runner, log)
+                    if wrapper is not None:
+                        exec_cmd = wrapper(exec_cmd)
+            return _run_child(
+                exec_cmd, runner, log, cleanup, child_proc, pending, extra_env
             )
-            cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(argv, runner, log, cleanup, extra_env)
-
-        # Stale wrapper state (pid dead) should not block a new wrapper.
-        if state.is_wrapper and state.pid() is not None and not state.pid_alive():
-            log.info(
-                "Stale wrapper state detected (pid %s not alive), clearing", state.pid()
-            )
-            state.clear()
-
-        already_active = state.is_active or state.is_wrapper
-        if already_active:
-            log.warning(
-                "Prior gamemode session active (%s) — wrappers disabled, passing through command",
-                state.mode,
-            )
-            cleanup = _build_cleanup_closure([], log, state, preserve_state=True)
-            return _run_child(argv, runner, log, cleanup, extra_env)
-
-        state.mark_wrapper(command)
-        features = collect_features(config, runner, log)
-        features_enable(features, log)
-        if config.enable_audio:
-            extra_env = {**extra_env, "PULSE_LATENCY_MSEC": config.audio_latency}
-
-        cleanup = _build_cleanup_closure(features, log, state, preserve_state=False)
-
-        exec_cmd = list(argv)
-        for name, factory in WRAPPER_FACTORIES.items():
-            if name in config.wrapper_features:
-                wrapper = factory(config, runner, log)
-                if wrapper is not None:
-                    exec_cmd = wrapper(exec_cmd)
-        return _run_child(exec_cmd, runner, log, cleanup, extra_env)

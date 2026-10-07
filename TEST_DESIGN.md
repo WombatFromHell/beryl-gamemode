@@ -1,5 +1,71 @@
 # Test Dependency Graph & Module Map
 
+## CI Safety Rules
+
+Rules for writing tests that pass on the GitHub Actions runner (`nix develop -c make ci-nix`,
+`ubuntu-26.04`, `uv run pytest`). Every rule here was added because violating it produced a
+failure that reproduced on CI but **not** locally — the class of bug that costs the most time,
+because a green local run proves nothing.
+
+1. **Never reconstruct a file path that another component wrote.** If a helper writes a
+   diagnostics file, it must expose the path it used. A test that rebuilds the name from
+   parameters silently reads the wrong file and prints an empty tail — which looks like "no
+   output" and hides the traceback that explains the failure. This went unnoticed for two
+   commits: every CI failure printed `stderr:` followed by nothing, so the real cause had to be
+   guessed. `spawn_child` now attaches `stderr_path` to the `Popen`; consumers read that.
+
+2. **Isolate every spawned child from the ambient process group.** In CI the chain is
+   `Actions step → nix develop → make → uv run → pytest`, and children spawned without
+   `start_new_session=True` share its process group. Any signal the environment directs at that
+   group lands on the test subject and is indistinguishable from a product bug.
+   `spawn_child` sets `start_new_session=True`; do not remove it.
+
+3. **Pin the _whole_ config of a spawned child, never inherit defaults.** A child that builds a
+   `Config` by hand must set every flag that could change what actually gets executed, not just
+   the ones the author was thinking about. `action_wrapper` wraps its command with everything in
+   `WRAPPER_FEATURES` (default `systemd_run,steam,inhibit`), so a child that left
+   `enable_systemd_run`/`enable_sleep_inhibit` at their defaults really executed
+   `systemd-run → systemd-inhibit → /bin/sleep 60`. That works on a developer box and dies in
+   milliseconds on a host with a systemd session, so the test subject died before it could be
+   signalled and every signal assertion reported a bogus `1` / `-15` / `-2`. This was the actual
+   cause of the CI-only flake; `smoketest_wrapper_host_env.py` reproduces it on any machine.
+   The same rule applies to environment: a spawned child inherits whatever `PATH` the runner had.
+
+4. **A readiness marker must be written _after_ the state the test depends on.** A child that
+   announces "ready" before installing its signal handlers (or before acquiring the lock the
+   test probes) hands the test a race instead of a synchronization point.
+
+5. **Reproducing the CI _value_ is not reproducing the CI _cause_.** A regression test that
+   merely produces the same `returncode` (-15/-2) confirms the shape of the failure and nothing
+   else — `test_signal_during_startup_is_not_lost` did exactly this, the fix it motivated was
+   wrong, and CI stayed red. A regression test must fail **for the reason you believe is the
+   cause**. If the log is not sufficient to identify the mechanism, fix the diagnostics (rule 1)
+   and re-observe before writing any fix. Widen the window you actually suspect with a knob
+   (e.g. `_spawn_signal_wrapper(slow_startup=True)`) rather than a different one.
+
+6. **Never leave process-global state mutated — on any code path.** An earlier fix for this
+   flake blocked `SIGTERM`/`SIGINT` in `_signal_guard`'s teardown. Because several tests call
+   `action_wrapper` _in-process_, that permanently blocked those signals in the pytest process;
+   every child spawned afterwards inherited the mask, could never be signalled, and all eight
+   signal tests hung until timeout. Signal dispositions, signal masks, `cwd`, `umask` and
+   `os.environ` are all global: restore them, or don't change them. (That fix was reverted once
+   rule 3 turned out to be the real cause — it made the wrapper un-killable by Ctrl-C during
+   shutdown, and the window it guarded was never the problem.)
+
+7. **Run the whole suite, not a `-k` subset.** Rule 6's failure passed under `-k signal` and
+   failed in the full run. A subset exercises a different set of preceding tests, so it cannot
+   surface leaks between them.
+
+8. **A CI-only failure demands local evidence before a fix ships.** Reproduce it on your own
+   machine — the host coupling here was reproduced by putting failing `systemd-run`/
+   `systemd-inhibit` stubs on `PATH` — or write a deterministic in-suite reproducer. Otherwise
+   you are shipping a guess. The reproducer's docstring should name the exact CI values and
+   messages it replaces.
+
+9. **Every failure message needs rc _and_ the child's stderr.** Cheap, and it is often the only
+   evidence that distinguishes "died to the signal" from "crashed before doing anything" — the
+   whole systemd misdiagnosis was sitting in that stderr tail.
+
 ## Test Dependency Graph
 
 ```mermaid
@@ -7,7 +73,7 @@ graph TB
     conftest["tests/conftest.py<br/>central fixtures & factories & helpers<br/>FakeRunner, FakeFeature, feature_builder, tmp_path_cfg,<br/>logger, runner, niri_session, state_manager, held_lock,<br/>disabled_features_env, spawn_child, mock_collect_features,<br/>_cfg, _cp, _resolve, _dep_runner, _state"]
 
     test_cli["tests/test_cli.py<br/>17 tests<br/>TestCliParser, TestMain"]
-    test_config["tests/test_config.py<br/>38 tests<br/>TestConfig, TestConfigFromEnv,<br/>TestShouldSkipLine, TestParseLine"]
+    test_config["tests/test_config.py<br/>43 tests<br/>TestConfig, TestConfigFromEnv,<br/>TestShouldSkipLine, TestParseLine"]
     test_feature["tests/test_feature.py<br/>12 tests<br/>TestFeatureResult, TestBaseFeature"]
     test_runner["tests/test_runner.py<br/>10 tests<br/>TestRunner, TestCheckedCommandRunner"]
     test_compositor["tests/test_compositor.py<br/>9 tests<br/>TestCompositorDetection, TestOutputResolve"]
@@ -16,7 +82,7 @@ graph TB
     test_logging["tests/test_logging.py<br/>3 tests<br/>TestLogging"]
     test_state["tests/test_state.py<br/>12 tests<br/>TestStateManager"]
     test_features["tests/test_features.py<br/>67 tests<br/>TestVRR, TestPowerProfile, TestSCXScheduler,<br/>TestAudioPriority, TestScreenInhibit, TestIdleMonitor<br/>(incl. input_classifier fake-sysfs tests),<br/>TestSteamWrapperPath, TestInhibitWrapperFactory,<br/>TestSystemdRunWrapper, TestWrapperFactories"]
-    test_actions["tests/test_actions.py<br/>24 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime,<br/>TestActionOn, TestActionOff,<br/>TestActionStatus, TestCleanupClosure,<br/>TestWrapperShellFunctionFallback, TestWrapperAudioEnv"]
+    test_actions["tests/test_actions.py<br/>26 tests<br/>TestActionWrapper, TestWatchParent,<br/>TestStateManagerLockLifetime,<br/>TestActionOn, TestActionOff,<br/>TestActionStatus, TestCleanupClosure,<br/>TestWrapperShellFunctionFallback, TestWrapperAudioEnv"]
     test_shell["tests/test_shell_fallback.py<br/>9 tests<br/>TestShellFallback"]
 
     conftest --> test_cli
@@ -59,16 +125,16 @@ graph TB
 
 ### Test Configuration & Shared Infrastructure
 
-| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                                                                                                                                                                        |
-| ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `conftest.py` | Central fixture definitions, FakeRunner, FakeFeature, helper factories | `tmp_path_cfg`, `logger`, `runner`, `fake_runner`, `feature_builder`, `niri_session`, `state_manager`, `held_lock`, `disabled_features_env`, `spawn_child`, `mock_collect_features`, `_cfg`, `_cp`, `_resolve`, `_dep_runner`, `_state`, `_make_feature`, `_vrr_maps`, `_inhibit_maps`, `_dbus_uninhibit_cmd` |
+| File          | Purpose                                                                | Key Fixtures & Classes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conftest.py` | Central fixture definitions, FakeRunner, FakeFeature, helper factories | `tmp_path_cfg`, `logger`, `runner`, `fake_runner`, `feature_builder`, `niri_session`, `state_manager`, `held_lock`, `disabled_features_env`, `spawn_child`, `mock_collect_features`, `_cfg`, `_cp`, `_resolve`, `_dep_runner`, `_state`, `_make_feature`, `_vrr_maps`, `_inhibit_maps`, `_dbus_uninhibit_cmd`. `spawn_child` follows the CI Safety Rules: own session, generous ready deadline, stderr captured to a file whose path is exposed on the returned `Popen` (`stderr_path`), teardown reaps. |
 
 ### Unit Tests (by module)
 
 | Test File                | Source Module       | Coverage                                                                                                                                                                                                                                              | Test Count |
 | ------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | `test_cli.py`            | `cli.py`            | `cli_parse()` — all argument modes; `main()` version/usage/error                                                                                                                                                                                      | 17         |
-| `test_config.py`         | `config.py`         | `Config` fields, bool/set parsing, `from_env()` single env boundary (file + env override, defaults, explicit mapping), `state_dir`, `systemd_run_args`, `toggle_features`, `wrapper_features`, `_parse_line`, `_should_skip_line`, `load_config_file` | 38         |
+| `test_config.py`         | `config.py`         | `Config` fields, bool/set parsing, `from_env()` single env boundary (file + env override, defaults, explicit mapping), `state_dir`, `systemd_run_args`, `toggle_features`, `wrapper_features`, `_parse_line`, `_should_skip_line`, `load_config_file` | 43         |
 | `test_feature.py`        | `feature.py`        | `FeatureResult` factories (skip/did_change/error/noop), `_BaseFeature` gating, `log_feature_result`                                                                                                                                                   | 12         |
 | `test_runner.py`         | `runner.py`         | `Runner.resolve()`, `require()`, `run()`, `pipe()`, `CheckedCommandRunner` (`run_or_none`, missing/error logging)                                                                                                                                     | 10         |
 | `test_compositor.py`     | `compositor.py`     | niri/KDE detection (env + pgrep fallback), `_session_contains`, `output_resolve()`                                                                                                                                                                    | 9          |
@@ -80,25 +146,26 @@ graph TB
 
 ### Smoke Tests
 
-| File                          | Purpose                                                                                                                                                                                            |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `smoketest_evdev_idle.py`     | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system.                                         |
-| `smoketest_shell_function.py` | Standalone script (not pytest) validating shell-function fallback end-to-end on the host: `fish -c`, `bash -c` + `BASH_ENV`, `zsh -c` + `.zshenv` resolve a shell function through a real `Popen`. |
+| File                            | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoketest_evdev_idle.py`       | Standalone script (not pytest) validating evdev KB&M device classification, `select()`-based polling, and idle/active transition detection on host system.                                                                                                                                                                                                                                                                                        |
+| `smoketest_shell_function.py`   | Standalone script (not pytest) validating shell-function fallback end-to-end on the host: `fish -c`, `bash -c` + `BASH_ENV`, `zsh -c` + `.zshenv` resolve a shell function through a real `Popen`.                                                                                                                                                                                                                                                |
+| `smoketest_wrapper_host_env.py` | Standalone script (not pytest) validating that `action_wrapper`'s `exec_cmd` is host-dependent. Scenario A makes the runner resolve a `systemd-inhibit` that fails and shows the command being replaced and dying in milliseconds (the CI-only signal-test flake, reproduced anywhere). Scenario B pins the wrapper features with the real systemd binaries still resolvable and shows `exec_cmd` verbatim and the command running to completion. |
 
 ### Integration Tests
 
-| Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                   | Test Count |
-| ------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority (no `os.environ` mutation — env file is the contract), ScreenInhibit, idle monitor (incl. `input_classifier` fake-sysfs classification tests); wrapper factories: Steam, Inhibit, SystemdRun; WRAPPER_FACTORIES registry                                                                                                                       | 67         |
-| `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; `_watch_parent` libc/prctl; lock lifetime; `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state; `TestWrapperShellFunctionFallback` (BASH_ENV Popen-scoped); `TestWrapperAudioEnv` (`PULSE_LATENCY_MSEC` via Popen env channel, `os.environ` untouched) | 24         |
+| Test File          | Source Module         | Coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Test Count |
+| ------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `test_features.py` | `features/` (package) | All feature implementations: VRR, PowerProfile, SCXScheduler, AudioPriority (no `os.environ` mutation — env file is the contract), ScreenInhibit, idle monitor (incl. `input_classifier` fake-sysfs classification tests); wrapper factories: Steam, Inhibit, SystemdRun; WRAPPER_FACTORIES registry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 67         |
+| `test_actions.py`  | `actions.py`          | `action_wrapper()` normal exit/signal/concurrency/nonzero/OSError; signal handling pre-spawn (`test_signal_during_startup_is_not_lost`) and on the running child (`test_signal_exit_code_is_child_wait_status`, `test_cleanup_fires_on_signal`) — both spawned children pin the wrapper features so `exec_cmd` is exactly `/bin/sleep 60` on any host (see `smoketest_wrapper_host_env.py`); `_watch_parent` libc/prctl (including the warning it logs on prctl failure); lock lifetime (reuses the same wrapper child rather than a second probe script); `action_on` enable/idempotent/wrapper-active; `action_off` disable/clear; `action_status` output; `_build_cleanup_closure` idempotent/preserve_state; `TestWrapperShellFunctionFallback` (BASH_ENV Popen-scoped); `TestWrapperAudioEnv` (`PULSE_LATENCY_MSEC` via Popen env channel, `os.environ` untouched) | 26         |
 
 ### Test Coverage Summary
 
 | Category    | Files  | Tests   | Scope                                       |
 | ----------- | ------ | ------- | ------------------------------------------- |
-| Unit        | 10     | 129     | Individual module functions/classes         |
-| Integration | 2      | 91      | Cross-module: features, actions, subprocess |
-| **Total**   | **12** | **220** | All public API paths                        |
+| Unit        | 10     | 134     | Individual module functions/classes         |
+| Integration | 2      | 93      | Cross-module: features, actions, subprocess |
+| **Total**   | **12** | **227** | All public API paths                        |
 
 ### Feature Test Matrix
 
@@ -129,7 +196,7 @@ graph TD
     conftest --> vrr_maps["_vrr_maps()<br/>VRR test scenario maps"]
     conftest --> inhibit_maps["_inhibit_maps()<br/>ScreenInhibit test scenario maps"]
     conftest --> dbus_uninhibit["_dbus_uninhibit_cmd()<br/>ScreenSaver.UnInhibit command builder"]
-    conftest --> spawn_child["spawn_child()<br/>write script, Popen, poll ready file"]
+    conftest --> spawn_child["spawn_child()<br/>write script, Popen (own session),<br/>poll ready file, expose stderr_path"]
     conftest --> mock_collect["mock_collect_features()<br/>patch collect_features to return features"]
     conftest --> dep_runner["_dep_runner()<br/>FakeRunner with dependency resolutions"]
     conftest --> state_helper["_state()<br/>initialized StateManager"]
@@ -287,6 +354,8 @@ graph TD
         I --> N[WRAPPER_FACTORIES]
         I --> O[_run_child via Runner.spawn]
         I --> P[_build_cleanup_closure]
+        I --> P2["_signal_guard<br/>installed before slow setup;<br/>kept installed after a signal<br/>so the child's wait status survives exit"]
+        P2 --> O
     end
 
     subgraph feature_tests["Feature Unit Paths"]

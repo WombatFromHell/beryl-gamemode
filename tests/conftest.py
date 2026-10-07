@@ -1,11 +1,13 @@
 """Centralized fixtures, factories, and test helpers."""
 
+import ctypes.util
 import fcntl
 import json
 import logging
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -16,6 +18,13 @@ from gamemode.config import Config
 from gamemode.feature import FeatureResult, _BaseFeature
 from gamemode.runner import Runner
 from gamemode.state import StateManager
+
+
+@pytest.fixture(autouse=True)
+def _fast_find_library(monkeypatch):
+    """ctypes.util.find_library can Popen ldconfig/gcc (slow in Nix shells);
+    point it at the real libc for in-process tests."""
+    monkeypatch.setattr(ctypes.util, "find_library", lambda name: "libc.so.6")
 
 
 class FakeFeature(_BaseFeature):
@@ -81,24 +90,52 @@ def _cfg(**overrides: Any) -> Config:
     return Config(**defaults)
 
 
+class ChildProc(subprocess.Popen[bytes]):
+    """Popen that knows where its stderr went.
+
+    Spawned with a file handle, so bytes mode. `stderr_path` exists so callers
+    report the stderr they actually captured instead of rebuilding the file
+    name (rebuilding it wrong is what hid the CI failure for two commits).
+    """
+
+    stderr_path: Path
+
+
 def spawn_child(tmp_path, script_body, script_name="child.py", ready_name="ready"):
-    """Write a script, spawn it, wait for the ready file, return the Popen."""
+    """Write a script, spawn it, wait for the ready file, return the Popen.
+
+    The child's stderr goes to <script_name>.err so failures are readable in
+    CI logs (CI runners are slower than local, so the deadline is generous);
+    the path is exposed as `child.stderr_path` for failure messages.
+
+    The child gets its own session (start_new_session=True): without it the
+    child shares a process group with pytest, uv, make, nix and the CI runner,
+    so any signal the environment delivers to that group lands on the child
+    and masquerades as a product bug. Tests must only ever be affected by the
+    signals they send themselves.
+    """
     script = tmp_path / script_name
     script.write_text(script_body)
     ready_path = tmp_path / ready_name
-    proc = subprocess.Popen(
-        ["python3", str(script)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    for _ in range(50):
+    err_path = tmp_path / f"{script_name}.err"
+    with open(err_path, "w") as err:
+        proc = ChildProc(
+            ["python3", str(script)],
+            stdout=subprocess.DEVNULL,
+            stderr=err,
+            start_new_session=True,
+        )  # the child keeps its own dup
+    proc.stderr_path = err_path
+    for _ in range(300):
         if ready_path.exists():
             return proc
         time.sleep(0.1)
     proc.kill()
     proc.wait()
-    pytest.fail(f"Child {script_name} did not become ready")
+    pytest.fail(
+        f"Child {script_name} did not become ready (rc={proc.returncode})\n"
+        f"stderr:\n{err_path.read_text()[-2000:]}"
+    )
 
 
 def mock_collect_features(features):
@@ -412,3 +449,9 @@ def disabled_features_env(monkeypatch):
     monkeypatch.setenv("ENABLE_AUDIO_PRIORITY_BOOST", "false")
     monkeypatch.setenv("ENABLE_STEAM_ENV", "false")
     monkeypatch.setenv("ENABLE_SYSTEMD_RUN", "false")
+    # The sleep-inhibit wrapper and the wrapper-feature set have their own
+    # toggles; without these the wrapper still inserts systemd-inhibit around
+    # the command and the test's exit code becomes the host's to decide
+    # (see smoketest_wrapper_host_env.py).
+    monkeypatch.setenv("ENABLE_SLEEP_INHIBIT", "false")
+    monkeypatch.setenv("WRAPPER_FEATURES", "")
