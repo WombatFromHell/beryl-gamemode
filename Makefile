@@ -156,8 +156,8 @@ install: $(OUT)
 		mkdir -p "$$HOME/.local/bin"; \
 		INSTALL_DIR="$$HOME/.local/bin"; \
 	fi; \
-	cp -f $(OUT) $(OUT).sha256sum "$$INSTALL_DIR/"; \
-	chmod +x "$$INSTALL_DIR/$(ARTIFACT)"; \
+	install -m 0755 $(OUT) "$$INSTALL_DIR/$(ARTIFACT)"; \
+	install -m 0644 $(OUT).sha256sum "$$INSTALL_DIR/$(ARTIFACT).sha256sum"; \
 	ln -sf "$$INSTALL_DIR/$(ARTIFACT)" "$$HOME/.local/bin/gamemode"; \
 	echo "Installed to $$INSTALL_DIR/$(ARTIFACT)"
 
